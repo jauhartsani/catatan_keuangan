@@ -313,7 +313,8 @@ nav { background: var(--surface); border-bottom: 1px solid var(--border); positi
   .fg.full { grid-column: 1; }
   .equity-hero { padding: 1.5rem; }
   .equity-hero-val { font-size: 30px; }
-  .payer-pie-grid { grid-template-columns: 1fr; }
+  .payer-pie-grid { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  
 }
 @media (max-width: 480px) {
   .stats-row { grid-template-columns: 1fr; }
