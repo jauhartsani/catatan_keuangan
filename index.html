@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Keuangan JN">
+<link rel="manifest" href="#" id="manifestLink">
 <title>Keuangan Jauhar & Nita</title>
 <link rel="icon" type="image/svg" href="https://ik.imagekit.io/ljqggx4fn/nikah/JN.svg">
 <link rel="apple-touch-icon" href="https://ik.imagekit.io/ljqggx4fn/nikah/nj%20png.png">
@@ -18,6 +21,119 @@
   window._SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlvZmdidWtrd25rYm54a3plaWFmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0Mjg2MjIsImV4cCI6MjA5MzAwNDYyMn0.qMllJolpCmfOshcFoXAN5UaRxRgXk7KO6mer9fBv6U4';
   setTimeout(() => { if(window.doSetup) window.doSetup(); }, 120);
 </script>
+
+<!-- ════ PWA MANIFEST (inline via blob) ════
+     Ini diperlukan agar iOS bisa menampilkan notifikasi lockscreen.
+     iOS 16.4+ mendukung Web Push lewat PWA yang di-"Add to Home Screen".
+     Tanpa manifest + service worker, new Notification() TIDAK BERFUNGSI di iOS.
+-->
+<script>
+(function(){
+  const manifest = {
+    name: "Keuangan Jauhar & Nita",
+    short_name: "Keuangan JN",
+    description: "Buku catatan keuangan keluarga",
+    start_url: "./",
+    display: "standalone",
+    background_color: "#F7F6F2",
+    theme_color: "#1A1916",
+    icons: [
+      { src: "https://ik.imagekit.io/ljqggx4fn/nikah/nj%20png.png", sizes: "192x192", type: "image/png" },
+      { src: "https://ik.imagekit.io/ljqggx4fn/nikah/nj%20png.png", sizes: "512x512", type: "image/png" }
+    ]
+  };
+  const blob = new Blob([JSON.stringify(manifest)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  document.getElementById('manifestLink').href = url;
+})();
+</script>
+
+<!-- ════ SERVICE WORKER REGISTRATION ════
+     Service Worker diperlukan untuk:
+     1. Push Notification di background (termasuk lockscreen iOS 16.4+)
+     2. Offline support
+     CATATAN: SW harus di-host sebagai file terpisah (sw.js) di root domain.
+     Di bawah ini adalah registrasi + inline SW via blob URL sebagai fallback.
+-->
+<script>
+// Daftarkan service worker jika browser support
+if ('serviceWorker' in navigator) {
+  // Buat SW inline via blob - untuk production, simpan sebagai /sw.js
+  const swCode = `
+    const CACHE_NAME = 'keuangan-jn-v1';
+    
+    self.addEventListener('install', e => {
+      self.skipWaiting();
+    });
+    
+    self.addEventListener('activate', e => {
+      e.waitUntil(clients.claim());
+    });
+    
+    // Handle push events dari server (Web Push Protocol)
+    self.addEventListener('push', e => {
+      const data = e.data ? e.data.json() : {};
+      const title = data.title || 'Keuangan JN';
+      const options = {
+        body: data.body || '',
+        icon: 'https://ik.imagekit.io/ljqggx4fn/nikah/nj%20png.png',
+        badge: 'https://ik.imagekit.io/ljqggx4fn/nikah/nj%20png.png',
+        tag: data.tag || 'keuangan-notif',
+        data: data.url || '/',
+        vibrate: [100, 50, 100],
+        requireInteraction: false
+      };
+      e.waitUntil(self.registration.showNotification(title, options));
+    });
+    
+    // Handle notifikasi diklik
+    self.addEventListener('notificationclick', e => {
+      e.notification.close();
+      e.waitUntil(
+        clients.matchAll({type:'window'}).then(clientList => {
+          for (const c of clientList) {
+            if (c.url === e.notification.data && 'focus' in c) return c.focus();
+          }
+          if (clients.openWindow) return clients.openWindow('/');
+        })
+      );
+    });
+    
+    // Handle pesan dari main thread (untuk show notifikasi manual)
+    self.addEventListener('message', e => {
+      if (e.data && e.data.type === 'SHOW_NOTIFICATION') {
+        const { title, body, tag } = e.data;
+        self.registration.showNotification(title, {
+          body,
+          icon: 'https://ik.imagekit.io/ljqggx4fn/nikah/nj%20png.png',
+          badge: 'https://ik.imagekit.io/ljqggx4fn/nikah/nj%20png.png',
+          tag: tag || 'keuangan-notif',
+          vibrate: [100, 50, 100]
+        });
+      }
+    });
+  `;
+  
+  try {
+    const swBlob = new Blob([swCode], {type:'application/javascript'});
+    const swUrl = URL.createObjectURL(swBlob);
+    
+    navigator.serviceWorker.register(swUrl, {scope:'/'}).then(reg => {
+      window._swRegistration = reg;
+      console.log('✅ SW terdaftar:', reg.scope);
+    }).catch(err => {
+      // Blob URL SW tidak bisa dipakai di semua browser - fallback ke /sw.js
+      console.warn('SW blob gagal, coba /sw.js:', err.message);
+      navigator.serviceWorker.register('/sw.js').then(reg => {
+        window._swRegistration = reg;
+      }).catch(() => {});
+    });
+  } catch(e) {
+    console.warn('SW tidak tersedia:', e.message);
+  }
+}
+</script>
+
 <style>
 /* ════ SPLASH ════ */
 #splashScreen{position:fixed;inset:0;z-index:9999;background:#3f1211;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;transition:opacity .6s ease,transform .6s ease}
@@ -181,8 +297,6 @@ nav{background:var(--surface);border-bottom:1px solid var(--border);position:sti
 .rule-bbar{height:5px;background:var(--surface2);border-radius:99px;overflow:hidden;margin-top:10px}
 .rule-bfill{height:100%;border-radius:99px;transition:width .6s}
 .cascade-warn{font-size:11px;margin-top:3px;color:var(--amber)}
-
-/* ════ Rule Editor ════ */
 .rule-editor{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:1.25rem;margin-bottom:1rem;display:none}
 .rule-editor.open{display:block}
 .re-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px}
@@ -212,14 +326,11 @@ nav{background:var(--surface);border-bottom:1px solid var(--border);position:sti
 .re-month-label{font-size:11px;color:var(--text3);padding:6px 10px;background:var(--amber-l);border:1px solid var(--amber);border-radius:var(--r);margin-bottom:10px;display:flex;align-items:center;gap:6px}
 .re-kat-wrap{display:flex;flex-direction:column;gap:4px;margin-top:4px;padding:8px 10px;border:1px dashed var(--border2);border-radius:var(--r);background:var(--surface2)}
 .re-kat-wrap label{font-size:11px;font-weight:700;letter-spacing:.5px}
-.re-kat-select{padding:5px 8px;border:1.5px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-family:var(--font);font-size:12px;outline:none}
 .re-sub-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;min-height:24px}
 .re-sub-tag{display:flex;align-items:center;gap:4px;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:600;background:var(--blue-l);color:var(--blue);border:1px solid var(--blue-b)}
 .re-sub-tag button{background:none;border:none;color:var(--blue);cursor:pointer;font-size:12px;line-height:1;padding:0}
 .re-sub-add{padding:5px 12px;border-radius:99px;border:1.5px solid var(--blue-b);background:var(--blue-l);color:var(--blue);font-family:var(--font);font-size:11px;font-weight:600;cursor:pointer;flex-shrink:0;white-space:nowrap}
 .re-sub-add:hover{background:var(--blue);color:#fff}
-
-/* ════ Payer pie ════ */
 .payer-pie-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1rem}
 .payer-pie-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:1.25rem;box-shadow:var(--shadow);min-width:0;overflow:hidden}
 .pie-legend{display:flex;flex-direction:column;gap:5px;margin-top:8px;overflow:hidden}
@@ -227,8 +338,6 @@ nav{background:var(--surface);border-bottom:1px solid var(--border);position:sti
 .pie-row span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
 .pie-row span:last-child{flex-shrink:0;font-weight:600}
 .pie-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:5px;flex-shrink:0}
-
-/* ════ EQUITY ════ */
 .equity-hero{background:var(--text);color:var(--bg);border-radius:var(--r-xl);padding:2rem 2.5rem;margin-bottom:1rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem}
 .equity-hero-lbl{font-size:12px;text-transform:uppercase;letter-spacing:1px;opacity:.6;margin-bottom:6px}
 .equity-hero-val{font-family:var(--font-d);font-size:40px}
@@ -239,8 +348,6 @@ nav{background:var(--surface);border-bottom:1px solid var(--border);position:sti
 .ec-val.g{color:var(--green)}
 .ec-val.r{color:var(--red)}
 .ec-val.p{color:var(--purple)}
-
-/* ════ TRANSAKSI ════ */
 .filter-row{display:flex;gap:8px;margin-bottom:1.25rem;flex-wrap:wrap}
 .filter-row input,.filter-row select{padding:8px 12px;border:1.5px solid var(--border);border-radius:var(--r);background:var(--surface);color:var(--text);font-family:var(--font);font-size:13px;outline:none}
 .filter-row input{flex:1;min-width:160px}
@@ -260,8 +367,6 @@ nav{background:var(--surface);border-bottom:1px solid var(--border);position:sti
 .btn-sm{padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text2);font-family:var(--font);font-size:12px;cursor:pointer;transition:all .12s}
 .btn-sm:hover{background:var(--surface2);border-color:var(--border2);color:var(--text)}
 .btn-del:hover{background:var(--red-l);border-color:var(--red-b);color:var(--red)}
-
-/* ════ TODO ════ */
 .todo-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;flex-wrap:wrap;gap:12px}
 .btn-add-todo{padding:9px 18px;border-radius:var(--r);border:none;background:var(--text);color:var(--bg);font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:6px}
 .btn-add-todo:hover{opacity:.88}
@@ -311,8 +416,6 @@ nav{background:var(--surface);border-bottom:1px solid var(--border);position:sti
 .todo-summary-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:1.25rem;box-shadow:var(--shadow);text-align:center}
 .tsc-val{font-family:var(--font-d);font-size:22px;margin-bottom:4px}
 .tsc-lbl{font-size:11.5px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.6px}
-
-/* ════ MISC ════ */
 .top-list{display:flex;flex-direction:column;gap:5px;max-height:320px;overflow-y:auto}
 .top-item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--r);background:var(--surface2);font-size:13px}
 .top-item:hover{background:var(--border)}
@@ -332,8 +435,6 @@ nav{background:var(--surface);border-bottom:1px solid var(--border);position:sti
 .cmp-table tr:hover td{background:var(--surface2)}
 .up{color:var(--red);font-weight:600}
 .down{color:var(--green);font-weight:600}
-
-/* ════ MODALS ════ */
 .overlay{position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.45);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .2s;padding:1rem}
 .overlay.open{opacity:1;pointer-events:all}
 .modal{background:var(--surface);border-radius:var(--r-xl);padding:1.75rem;width:100%;max-width:500px;box-shadow:var(--shadow-md);transform:scale(.97);transition:transform .2s;max-height:90vh;overflow-y:auto}
@@ -349,8 +450,6 @@ nav{background:var(--surface);border-bottom:1px solid var(--border);position:sti
 .detail-item-sub{font-size:11.5px;color:var(--text3);margin-top:1px}
 .detail-item-amt{font-weight:700;color:var(--red);font-size:13px;flex-shrink:0}
 .detail-total{font-size:14px;font-weight:700;padding:12px;background:var(--surface2);border-radius:var(--r);display:flex;justify-content:space-between;margin-top:8px}
-
-/* ════ SETTINGS ════ */
 .settings-section{margin-bottom:1.5rem}
 .settings-section:last-child{margin-bottom:0}
 .settings-section h3{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text3);margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border)}
@@ -378,8 +477,6 @@ nav{background:var(--surface);border-bottom:1px solid var(--border);position:sti
 .settings-save-notice{font-size:11.5px;color:var(--text3);padding:8px 12px;background:var(--surface2);border-radius:var(--r);border:1px solid var(--border);display:flex;align-items:center;gap:6px}
 .settings-save-notice.saving{color:var(--amber)}
 .settings-save-notice.saved{color:var(--green)}
-
-/* ════ LOADER / TOAST ════ */
 .loader{text-align:center;padding:3rem;color:var(--text3)}
 .spin{width:24px;height:24px;border:2px solid var(--border);border-top-color:var(--text);border-radius:50%;animation:spin .65s linear infinite;margin:0 auto 12px}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -389,8 +486,14 @@ nav{background:var(--surface);border-bottom:1px solid var(--border);position:sti
 .toast.err{background:var(--surface);border:1.5px solid var(--red-b);color:var(--red)}
 .toast.inf{background:var(--surface);border:1.5px solid var(--border2);color:var(--text2)}
 .history-chart-wrap{height:240px;position:relative}
-
-/* ════ RESPONSIVE ════ */
+/* ════ PWA Install Banner ════ */
+.pwa-banner{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);z-index:1000;background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r-lg);padding:14px 18px;box-shadow:var(--shadow-md);display:flex;align-items:center;gap:12px;max-width:340px;width:calc(100% - 32px);animation:fadeUp .3s ease}
+.pwa-banner-icon{font-size:28px;flex-shrink:0}
+.pwa-banner-text{flex:1;font-size:13px;color:var(--text2);line-height:1.4}
+.pwa-banner-text strong{display:block;color:var(--text);font-size:14px;margin-bottom:2px}
+.pwa-banner-btns{display:flex;gap:6px;flex-shrink:0}
+.btn-pwa-install{padding:7px 14px;border-radius:var(--r);border:none;background:var(--text);color:var(--bg);font-family:var(--font);font-size:12px;font-weight:600;cursor:pointer}
+.btn-pwa-dismiss{padding:7px 10px;border-radius:var(--r);border:1.5px solid var(--border);background:transparent;color:var(--text2);font-family:var(--font);font-size:12px;cursor:pointer}
 @media(max-width:768px){
   nav{padding:0 .875rem;gap:6px}
   .nav-name{display:none}
@@ -559,7 +662,7 @@ nav{background:var(--surface);border-bottom:1px solid var(--border);position:sti
   <div class="page-header"><h1>Total Equity & Tabungan</h1><p>Akumulasi kekayaan bersih dari seluruh waktu</p></div>
   <div id="equityContent"><div class="loader"><div class="spin"></div>Memuat...</div></div>
 </div>
-</div><!-- /#app -->
+</div>
 
 <!-- EDIT MODAL -->
 <div class="overlay" id="editOverlay">
@@ -643,18 +746,40 @@ nav{background:var(--surface);border-bottom:1px solid var(--border);position:sti
 
 <!-- SETTINGS MODAL -->
 <div class="overlay" id="settingsOverlay">
-  <div class="modal" style="max-width:520px">
+  <div class="modal" style="max-width:540px">
     <div class="modal-title">⚙️ Pengaturan Integrasi</div>
     <div id="settingsSaveStatus" class="settings-save-notice" style="margin-bottom:1.25rem">
       <span>☁️</span><span id="settingsSaveText">Pengaturan disimpan otomatis ke cloud (Supabase)</span>
     </div>
+
+    <!-- ════ NOTIFIKASI PUSH ════ -->
+    <div class="settings-section">
+      <h3>🔔 Notifikasi Push (Cross-User)</h3>
+      <div style="font-size:12px;color:var(--text2);padding:10px 12px;background:var(--blue-l);border:1px solid var(--blue-b);border-radius:var(--r);margin-bottom:12px;line-height:1.6">
+        <strong style="color:var(--blue)">Cara kerja notifikasi cross-user:</strong><br>
+        Ketika Jauhar input transaksi/todo, sistem akan broadcast ke Nita secara realtime via Supabase.<br><br>
+        <strong style="color:var(--blue)">Untuk notifikasi lockscreen iOS:</strong><br>
+        1. Buka app di Safari iOS<br>
+        2. Tap "Share" → "Add to Home Screen"<br>
+        3. Buka app dari Home Screen (bukan dari browser)<br>
+        4. Klik tombol "Aktifkan Push" di bawah<br>
+        <em style="color:var(--text3)">(Membutuhkan iOS 16.4+ dan di-open dari Home Screen)</em>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn-test" id="btnReqPush" onclick="requestPushAndShow()">🔔 Aktifkan Push Notification</button>
+        <span id="pushStatus"><span class="status-dot idle"></span><span style="font-size:12px;color:var(--text3)">Belum diaktifkan</span></span>
+      </div>
+    </div>
+
     <div class="settings-section">
       <h3>📧 Email Notifikasi (EmailJS)</h3>
       <div class="settings-toggle-row"><span class="settings-toggle-label">Aktifkan notifikasi email untuk todo jatuh tempo</span><label class="toggle-switch"><input type="checkbox" id="emailToggle" onchange="onSettingsChange()"><span class="toggle-slider"></span></label></div>
-      <div class="settings-row"><label>EmailJS Service ID</label><input id="cfgServiceId" type="text" placeholder="service_xxxxxxx" oninput="onSettingsChange()"><div class="hint">Buat akun gratis di <a href="https://www.emailjs.com" target="_blank">emailjs.com</a></div></div>
+      <div class="settings-row"><label>EmailJS Service ID</label><input id="cfgServiceId" type="text" placeholder="service_xxxxxxx" oninput="onSettingsChange()"></div>
       <div class="settings-row"><label>EmailJS Template ID</label><input id="cfgTemplateId" type="text" placeholder="template_xxxxxxx" oninput="onSettingsChange()"><div class="hint">Variabel: <code style="background:var(--surface2);padding:1px 5px;border-radius:4px;font-size:11px">{{to_email}}</code> <code style="background:var(--surface2);padding:1px 5px;border-radius:4px;font-size:11px">{{message}}</code> <code style="background:var(--surface2);padding:1px 5px;border-radius:4px;font-size:11px">{{subject}}</code></div></div>
       <div class="settings-row"><label>EmailJS Public Key</label><input id="cfgPublicKey" type="text" placeholder="xxxxxxxxxxxxxxxxxxxx" oninput="onSettingsChange()"></div>
-      <div class="settings-row"><label>Email Tujuan Notifikasi</label><input id="cfgToEmail" type="email" placeholder="email@gmail.com" oninput="onSettingsChange()"></div>
+      <!-- ════ PERBAIKAN: Dua kolom email ════ -->
+      <div class="settings-row"><label>Email Jauhar</label><input id="cfgToEmailJauhar" type="email" placeholder="jauhar@gmail.com" oninput="onSettingsChange()"></div>
+      <div class="settings-row"><label>Email Nita</label><input id="cfgToEmailNita" type="email" placeholder="nita@gmail.com" oninput="onSettingsChange()"></div>
       <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
         <button class="btn-test" id="btnTestEmail" onclick="testEmail()">🧪 Test Kirim Email</button>
         <span id="emailStatus"><span class="status-dot idle"></span><span style="font-size:12px;color:var(--text3)">Belum ditest</span></span>
@@ -736,7 +861,12 @@ let _notifs=[];
 let _todoFilter='semua';
 let _todoAutoRecord=true;
 let _todoRecurring=false;
-let cfg={emailEnabled:false,serviceId:'',templateId:'',publicKey:'',toEmail:'',sheetsEnabled:false,sheetUrl:''};
+let cfg={
+  emailEnabled:false,serviceId:'',templateId:'',publicKey:'',
+  toEmailJauhar:'',toEmailNita:'',  // ← PERBAIKAN: dua email terpisah
+  sheetsEnabled:false,sheetUrl:''
+};
+let _realtimeChannel=null; // untuk Supabase Realtime
 
 const LOCKED_KEYS=['mk','op','dd','tb'];
 function isLocked(k){return LOCKED_KEYS.includes(k);}
@@ -752,8 +882,23 @@ let _currentRules=null;
 let ruleEditorOpen=false,_editorRules=[];
 
 // ════ SUPABASE SETTINGS / RULES ════
-async function loadSettingsFromSB(){if(!sb)return;try{const{data,error}=await sb.from('app_settings').select('data').eq('id','integrations').single();if(!error&&data&&data.data)cfg=Object.assign({emailEnabled:false,serviceId:'',templateId:'',publicKey:'',toEmail:'',sheetsEnabled:false,sheetUrl:''},data.data);}catch(e){}}
-async function saveSettingsSB(){if(!sb)return;try{await sb.from('app_settings').upsert({id:'integrations',data:cfg});}catch(e){}}
+async function loadSettingsFromSB(){
+  if(!sb)return;
+  try{
+    const{data,error}=await sb.from('app_settings').select('data').eq('id','integrations').single();
+    if(!error&&data&&data.data){
+      cfg=Object.assign({
+        emailEnabled:false,serviceId:'',templateId:'',publicKey:'',
+        toEmailJauhar:'',toEmailNita:'',
+        sheetsEnabled:false,sheetUrl:''
+      },data.data);
+    }
+  }catch(e){}
+}
+async function saveSettingsSB(){
+  if(!sb)return;
+  try{await sb.from('app_settings').upsert({id:'integrations',data:cfg});}catch(e){}
+}
 
 function getRuleKey(bln,thn){return `budget_rules_${thn}_${String(bln).padStart(2,'0')}`;}
 function getRuleKeyBase(){return 'budget_rules';}
@@ -782,21 +927,184 @@ async function getCurrentRulesForMonth(bln,thn){
   return getDefaultRules();
 }
 
-// ════ NOTIFICATIONS ════
-function loadNotifs(){try{const s=localStorage.getItem('jn_notifs');if(s)_notifs=JSON.parse(s);}catch(e){_notifs=[];}updateNotifBadge();}
-function saveNotifs(){try{localStorage.setItem('jn_notifs',JSON.stringify(_notifs.slice(0,50)));}catch(e){}}
-function addNotif(msg,type='info'){_notifs.unshift({id:Date.now(),msg,type,time:new Date().toISOString(),read:false});saveNotifs();updateNotifBadge();}
-function updateNotifBadge(){const unread=_notifs.filter(n=>!n.read).length;const badge=document.getElementById('notifBadge');if(badge){badge.textContent=unread>9?'9+':unread;badge.style.display=unread?'flex':'none';}}
-function openNotifPanel(){
-  _notifs.forEach(n=>n.read=true);saveNotifs();updateNotifBadge();
+// ════ ★ CROSS-USER REALTIME NOTIFICATIONS VIA SUPABASE ════
+// Semua notifikasi disimpan di tabel 'notifications' Supabase
+// Kedua user subscribe ke Realtime channel yang sama
+// Saat Jauhar kirim notif → Nita langsung terima (dan sebaliknya)
+//
+// SETUP SUPABASE (jalankan SQL ini sekali di Supabase dashboard):
+// CREATE TABLE IF NOT EXISTS notifications (
+//   id BIGSERIAL PRIMARY KEY,
+//   created_at TIMESTAMPTZ DEFAULT NOW(),
+//   message TEXT NOT NULL,
+//   type TEXT DEFAULT 'info',
+//   from_user TEXT,
+//   for_user TEXT DEFAULT 'all'
+// );
+// ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+// CREATE POLICY "allow all" ON notifications FOR ALL USING (true) WITH CHECK (true);
+
+async function saveNotifToDB(msg, type='info', forUser='all'){
+  if(!sb)return;
+  try{
+    await sb.from('notifications').insert([{
+      message:msg, type, from_user:currentUser, for_user:forUser
+    }]);
+  }catch(e){console.warn('saveNotifToDB error:',e);}
+}
+
+async function loadNotifsFromDB(){
+  if(!sb)return;
+  try{
+    const{data,error}=await sb.from('notifications')
+      .select('*')
+      .or(`for_user.eq.all,for_user.eq.${currentUser}`)
+      .order('created_at',{ascending:false})
+      .limit(50);
+    if(!error&&data){
+      // Merge dengan localStorage untuk tracking "sudah dibaca"
+      const readSet=new Set(JSON.parse(localStorage.getItem('jn_read_notifs')||'[]'));
+      _notifs=data.map(n=>({
+        id:n.id,
+        msg:n.message,
+        type:n.type,
+        time:n.created_at,
+        from:n.from_user,
+        read:readSet.has(String(n.id))
+      }));
+      updateNotifBadge();
+    }
+  }catch(e){console.warn('loadNotifsFromDB error:',e);}
+}
+
+function setupRealtimeNotifications(){
+  if(!sb)return;
+  // Hapus channel lama jika ada
+  if(_realtimeChannel){sb.removeChannel(_realtimeChannel);}
+
+  _realtimeChannel=sb.channel('notifications-broadcast')
+    .on('postgres_changes',
+      {event:'INSERT',schema:'public',table:'notifications'},
+      (payload)=>{
+        const n=payload.new;
+        // Terima notif untuk semua user, atau khusus untuk current user
+        if(n.for_user==='all'||n.for_user===currentUser){
+          // Hanya tampilkan toast jika bukan dari user sendiri
+          if(n.from_user!==currentUser){
+            const fromName=n.from_user?n.from_user.charAt(0).toUpperCase()+n.from_user.slice(1):'';
+            toast(`🔔 [${fromName}] ${n.message}`,'inf');
+            pushNotifViaSW(n.message,n.message);
+          }
+          // Reload notifikasi
+          loadNotifsFromDB();
+        }
+      }
+    )
+    .subscribe((status)=>{
+      if(status==='SUBSCRIBED'){
+        console.log('✅ Realtime notifications aktif');
+      }
+    });
+}
+
+// ════ NOTIFICATIONS UI ════
+function updateNotifBadge(){
+  const unread=_notifs.filter(n=>!n.read).length;
+  const badge=document.getElementById('notifBadge');
+  if(badge){badge.textContent=unread>9?'9+':unread;badge.style.display=unread?'flex':'none';}
+}
+
+function addNotif(msg,type='info',forUser='all'){
+  // Simpan ke DB Supabase → akan di-broadcast ke semua user via Realtime
+  saveNotifToDB(msg,type,forUser);
+  // Juga tambah ke local state untuk respons cepat
+  _notifs.unshift({id:Date.now(),msg,type,time:new Date().toISOString(),read:false,from:currentUser});
+  updateNotifBadge();
+}
+
+async function openNotifPanel(){
+  await loadNotifsFromDB();
+  // Tandai semua sudah dibaca
+  const readIds=_notifs.map(n=>String(n.id));
+  localStorage.setItem('jn_read_notifs',JSON.stringify(readIds));
+  _notifs.forEach(n=>n.read=true);
+  updateNotifBadge();
   const list=document.getElementById('notifList');
-  if(!_notifs.length){list.innerHTML='<div style="color:var(--text3);text-align:center;padding:2rem">Tidak ada notifikasi</div>';}
-  else{list.innerHTML=_notifs.map(n=>`<div style="padding:10px 12px;border-radius:var(--r);background:var(--surface2);border:1px solid var(--border)"><div style="font-size:13px;color:var(--text);font-weight:500">${n.type==='todo_due'?'🔔':n.type==='transaksi'?'✅':'ℹ️'} ${n.msg}</div><div style="font-size:11px;color:var(--text3);margin-top:3px">${new Date(n.time).toLocaleString('id-ID')}</div></div>`).join('');}
+  if(!_notifs.length){
+    list.innerHTML='<div style="color:var(--text3);text-align:center;padding:2rem">Tidak ada notifikasi</div>';
+  }else{
+    list.innerHTML=_notifs.map(n=>{
+      const fromLabel=n.from&&n.from!==currentUser?`<span style="color:var(--blue);font-weight:700">[${n.from.charAt(0).toUpperCase()+n.from.slice(1)}] </span>`:'';
+      const icon=n.type==='todo_due'?'🔔':n.type==='transaksi'?'✅':n.type==='todo'?'📋':'ℹ️';
+      return `<div style="padding:10px 12px;border-radius:var(--r);background:var(--surface2);border:1px solid var(--border)">
+        <div style="font-size:13px;color:var(--text);font-weight:500">${icon} ${fromLabel}${n.msg}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:3px">${new Date(n.time).toLocaleString('id-ID')}</div>
+      </div>`;
+    }).join('');
+  }
   document.getElementById('notifOverlay').classList.add('open');
 }
-function clearNotifs(){_notifs=[];saveNotifs();updateNotifBadge();document.getElementById('notifList').innerHTML='<div style="color:var(--text3);text-align:center;padding:2rem">Tidak ada notifikasi</div>';}
-async function requestPushPermission(){if(!('Notification' in window))return;if(Notification.permission==='default')await Notification.requestPermission();}
-function pushNotif(title,body){if(!('Notification' in window)||Notification.permission!=='granted')return;try{new Notification(title,{body,icon:'https://ik.imagekit.io/ljqggx4fn/nikah/JN.svg'});}catch(e){}}
+
+async function clearNotifs(){
+  if(!sb||!confirm('Hapus semua notifikasi?'))return;
+  try{
+    await sb.from('notifications').delete().or(`for_user.eq.all,for_user.eq.${currentUser}`);
+    _notifs=[];
+    localStorage.removeItem('jn_read_notifs');
+    updateNotifBadge();
+    document.getElementById('notifList').innerHTML='<div style="color:var(--text3);text-align:center;padding:2rem">Tidak ada notifikasi</div>';
+  }catch(e){toast('Gagal hapus notifikasi','err');}
+}
+
+// ════ PUSH NOTIFICATION VIA SERVICE WORKER ════
+// Ini yang akan muncul di lockscreen iOS/Android
+async function requestPushAndShow(){
+  const btn=document.getElementById('btnReqPush');
+  if(!('Notification' in window)){setPushStatus('err','Browser tidak support notifikasi');return;}
+  btn.classList.add('loading');btn.textContent='⏳ Meminta izin...';
+  try{
+    const permission=await Notification.requestPermission();
+    if(permission==='granted'){
+      setPushStatus('ok','✅ Aktif! Notifikasi akan muncul di lockscreen');
+      localStorage.setItem('push_permission','granted');
+      // Test push langsung
+      pushNotifViaSW('✅ Berhasil!','Push notification aktif untuk Keuangan JN');
+    }else{
+      setPushStatus('err','Izin ditolak. Buka Settings untuk mengaktifkan.');
+    }
+  }catch(e){setPushStatus('err','Error: '+e.message);}
+  btn.classList.remove('loading');btn.textContent='🔔 Aktifkan Push Notification';
+}
+
+function setPushStatus(type,msg){
+  const el=document.getElementById('pushStatus');
+  if(!el)return;
+  el.innerHTML=`<span class="status-dot ${type}"></span><span style="font-size:12px;color:var(--text2)">${msg}</span>`;
+}
+
+function pushNotifViaSW(title,body,tag='keuangan-notif'){
+  // Coba via Service Worker dulu (bisa muncul di lockscreen)
+  if(window._swRegistration&&window._swRegistration.active){
+    window._swRegistration.active.postMessage({type:'SHOW_NOTIFICATION',title,body,tag});
+    return;
+  }
+  // Fallback: Web Notification API langsung (tidak muncul di lockscreen iOS)
+  if('Notification' in window&&Notification.permission==='granted'){
+    try{new Notification(title,{body,icon:'https://ik.imagekit.io/ljqggx4fn/nikah/nj%20png.png'});}catch(e){}
+  }
+}
+
+async function requestPushPermission(){
+  if(!('Notification' in window))return;
+  if(Notification.permission==='default'){
+    // Jangan auto-request, biarkan user yang klik tombol di Settings
+    return;
+  }
+  if(Notification.permission==='granted'){
+    setPushStatus('ok','✅ Aktif');
+    localStorage.setItem('push_permission','granted');
+  }
+}
 
 // ════ SETTINGS MODAL ════
 async function openSettings(){
@@ -805,28 +1113,90 @@ async function openSettings(){
   document.getElementById('cfgServiceId').value=cfg.serviceId||'';
   document.getElementById('cfgTemplateId').value=cfg.templateId||'';
   document.getElementById('cfgPublicKey').value=cfg.publicKey||'';
-  document.getElementById('cfgToEmail').value=cfg.toEmail||'';
+  document.getElementById('cfgToEmailJauhar').value=cfg.toEmailJauhar||'';
+  document.getElementById('cfgToEmailNita').value=cfg.toEmailNita||'';
   document.getElementById('sheetsToggle').checked=cfg.sheetsEnabled;
   document.getElementById('cfgSheetUrl').value=cfg.sheetUrl||'';
+  // Update push status
+  if(Notification.permission==='granted'){setPushStatus('ok','✅ Aktif');}
+  else if(Notification.permission==='denied'){setPushStatus('err','Ditolak');}
+  else{setPushStatus('idle','Belum diaktifkan');}
   setSaveNotice('idle','☁️ Pengaturan disimpan otomatis ke cloud (Supabase)');
   document.getElementById('settingsOverlay').classList.add('open');
 }
+
 function onSettingsChange(){readSettingsFromForm();setSaveNotice('saving','⏳ Ada perubahan — klik Simpan untuk menyimpan...');}
-function readSettingsFromForm(){cfg.emailEnabled=document.getElementById('emailToggle').checked;cfg.serviceId=document.getElementById('cfgServiceId').value.trim();cfg.templateId=document.getElementById('cfgTemplateId').value.trim();cfg.publicKey=document.getElementById('cfgPublicKey').value.trim();cfg.toEmail=document.getElementById('cfgToEmail').value.trim();cfg.sheetsEnabled=document.getElementById('sheetsToggle').checked;cfg.sheetUrl=document.getElementById('cfgSheetUrl').value.trim();}
-async function saveSettingsNow(){readSettingsFromForm();const btn=document.getElementById('btnSaveSettings');btn.disabled=true;btn.textContent='⏳ Menyimpan...';setSaveNotice('saving','⏳ Menyimpan ke Supabase...');await saveSettingsSB();btn.disabled=false;btn.textContent='💾 Simpan';setSaveNotice('saved','✅ Tersimpan di cloud!');toast('✓ Pengaturan tersimpan!','ok');}
-function setSaveNotice(type,msg){const el=document.getElementById('settingsSaveStatus');const txt=document.getElementById('settingsSaveText');if(el)el.className='settings-save-notice'+(type==='saving'?' saving':type==='saved'?' saved':'');if(txt)txt.textContent=msg;}
+function readSettingsFromForm(){
+  cfg.emailEnabled=document.getElementById('emailToggle').checked;
+  cfg.serviceId=document.getElementById('cfgServiceId').value.trim();
+  cfg.templateId=document.getElementById('cfgTemplateId').value.trim();
+  cfg.publicKey=document.getElementById('cfgPublicKey').value.trim();
+  cfg.toEmailJauhar=document.getElementById('cfgToEmailJauhar').value.trim();
+  cfg.toEmailNita=document.getElementById('cfgToEmailNita').value.trim();
+  cfg.sheetsEnabled=document.getElementById('sheetsToggle').checked;
+  cfg.sheetUrl=document.getElementById('cfgSheetUrl').value.trim();
+}
+async function saveSettingsNow(){
+  readSettingsFromForm();
+  const btn=document.getElementById('btnSaveSettings');btn.disabled=true;btn.textContent='⏳ Menyimpan...';
+  setSaveNotice('saving','⏳ Menyimpan ke Supabase...');
+  await saveSettingsSB();
+  btn.disabled=false;btn.textContent='💾 Simpan';
+  setSaveNotice('saved','✅ Tersimpan di cloud!');
+  toast('✓ Pengaturan tersimpan!','ok');
+}
+function setSaveNotice(type,msg){
+  const el=document.getElementById('settingsSaveStatus'),txt=document.getElementById('settingsSaveText');
+  if(el)el.className='settings-save-notice'+(type==='saving'?' saving':type==='saved'?' saved':'');
+  if(txt)txt.textContent=msg;
+}
 
 // ════ EMAILJS ════
 function initEmailJS(){if(!cfg.publicKey)return;try{emailjs.init(cfg.publicKey);}catch(e){}}
+
+// ════ PERBAIKAN: Kirim email ke KEDUA user (Jauhar + Nita) ════
 async function sendEmailJSTodoAlert(todo){
-  if(!cfg.emailEnabled||!cfg.serviceId||!cfg.templateId||!cfg.publicKey||!cfg.toEmail)return;
-  try{initEmailJS();await emailjs.send(cfg.serviceId,cfg.templateId,{to_email:cfg.toEmail,subject:`🔔 Jatuh Tempo Hari Ini: ${todo.nama} — Rp ${rp(todo.jumlah)}`,message:`📋 PENGINGAT PEMBAYARAN\n\nNama     : ${todo.nama}\nJumlah   : Rp ${rp(todo.jumlah)}\nTanggal  : ${fmtDate(todo.tanggal_bayar)}\nKategori : ${todo.kategori||'-'}\nPembayar : ${todo.payer||'-'}\nCatatan  : ${todo.catatan||'-'}\n\nHarap segera diselesaikan!\n\n— Keuangan Jauhar & Nita`});}catch(err){console.warn('Email todo error:',err);}
+  if(!cfg.emailEnabled||!cfg.serviceId||!cfg.templateId||!cfg.publicKey)return;
+  const emails=[cfg.toEmailJauhar,cfg.toEmailNita].filter(Boolean);
+  if(!emails.length)return;
+  try{
+    initEmailJS();
+    const msg=`📋 PENGINGAT PEMBAYARAN\n\nNama     : ${todo.nama}\nJumlah   : Rp ${rp(todo.jumlah)}\nTanggal  : ${fmtDate(todo.tanggal_bayar)}\nKategori : ${todo.kategori||'-'}\nPembayar : ${todo.payer||'-'}\nCatatan  : ${todo.catatan||'-'}\n\nHarap segera diselesaikan!\n\n— Keuangan Jauhar & Nita`;
+    // Kirim ke semua email yang terdaftar
+    await Promise.all(emails.map(email=>
+      emailjs.send(cfg.serviceId,cfg.templateId,{
+        to_email:email,
+        subject:`🔔 Jatuh Tempo Hari Ini: ${todo.nama} — Rp ${rp(todo.jumlah)}`,
+        message:msg
+      })
+    ));
+  }catch(err){console.warn('Email todo error:',err);}
 }
+
 async function testEmail(){
-  readSettingsFromForm();if(!cfg.serviceId||!cfg.templateId||!cfg.publicKey||!cfg.toEmail){setEmailStatus('err','Lengkapi semua kolom EmailJS dulu');return;}
-  const btn=document.getElementById('btnTestEmail');btn.classList.add('loading');btn.textContent='⏳ Mengirim...';setEmailStatus('idle','Mengirim...');
-  try{initEmailJS();await emailjs.send(cfg.serviceId,cfg.templateId,{to_email:cfg.toEmail,subject:'✅ Test Email — Keuangan JN',message:'Halo! Ini adalah email test dari aplikasi Keuangan Jauhar & Nita. Konfigurasi EmailJS kamu berhasil! 🎉'});setEmailStatus('ok','Email berhasil dikirim!');toast('✓ Test email terkirim!','ok');}
-  catch(err){setEmailStatus('err','Gagal: '+(err.text||err.message||'error'));toast('Gagal kirim email: '+(err.text||err.message),'err');}
+  readSettingsFromForm();
+  const emails=[cfg.toEmailJauhar,cfg.toEmailNita].filter(Boolean);
+  if(!cfg.serviceId||!cfg.templateId||!cfg.publicKey||!emails.length){
+    setEmailStatus('err','Lengkapi kolom EmailJS & minimal 1 email');return;
+  }
+  const btn=document.getElementById('btnTestEmail');
+  btn.classList.add('loading');btn.textContent='⏳ Mengirim...';
+  setEmailStatus('idle','Mengirim ke '+emails.length+' alamat...');
+  try{
+    initEmailJS();
+    await Promise.all(emails.map(email=>
+      emailjs.send(cfg.serviceId,cfg.templateId,{
+        to_email:email,
+        subject:'✅ Test Email — Keuangan JN',
+        message:`Halo! Ini test dari Keuangan Jauhar & Nita.\nEmail ini dikirim ke: ${email}\n\nKonfigurasi EmailJS kamu berhasil! 🎉`
+      })
+    ));
+    setEmailStatus('ok',`Terkirim ke ${emails.length} email!`);
+    toast('✓ Test email terkirim ke '+emails.length+' alamat!','ok');
+  }catch(err){
+    setEmailStatus('err','Gagal: '+(err.text||err.message||'error'));
+    toast('Gagal kirim email','err');
+  }
   btn.classList.remove('loading');btn.textContent='🧪 Test Kirim Email';
 }
 function setEmailStatus(type,msg){const el=document.getElementById('emailStatus');if(!el)return;el.innerHTML=`<span class="status-dot ${type}"></span><span style="font-size:12px;color:var(--text2)">${msg}</span>`;}
@@ -838,9 +1208,37 @@ function setSheetStatus(type,msg){const el=document.getElementById('sheetsStatus
 
 // ════ AUTH ════
 function selectWho(who){selectedWho=who;document.getElementById('whoJauhar').className='login-who-btn'+(who==='jauhar'?' selected':'');document.getElementById('whoNita').className='login-who-btn'+(who==='nita'?' selected':'');document.getElementById('loginPass').value='';document.getElementById('loginErr').classList.remove('show');}
-function doLogin(){const pass=document.getElementById('loginPass').value;if(USERS[selectedWho]===pass){currentUser=selectedWho;localStorage.setItem('currentUser',currentUser);document.getElementById('loginScreen').style.display='none';document.getElementById('userBadge').textContent=currentUser.charAt(0).toUpperCase()+currentUser.slice(1)+' →';if(window._supabaseReady)doSetup();else setTimeout(doSetup,400);}else{document.getElementById('loginErr').classList.add('show');document.getElementById('loginPass').value='';}}
-function doLogout(){if(!confirm('Yakin ingin logout?'))return;localStorage.removeItem('currentUser');currentUser=null;document.getElementById('app').style.display='none';document.getElementById('loginScreen').style.display='flex';document.getElementById('loginPass').value='';}
-function checkAutoLogin(){const saved=localStorage.getItem('currentUser');if(saved&&USERS[saved]){currentUser=saved;const b=document.getElementById('userBadge');if(b)b.textContent=currentUser.charAt(0).toUpperCase()+currentUser.slice(1)+' →';document.getElementById('loginScreen').style.display='none';return true;}return false;}
+function doLogin(){
+  const pass=document.getElementById('loginPass').value;
+  if(USERS[selectedWho]===pass){
+    currentUser=selectedWho;
+    localStorage.setItem('currentUser',currentUser);
+    document.getElementById('loginScreen').style.display='none';
+    document.getElementById('userBadge').textContent=currentUser.charAt(0).toUpperCase()+currentUser.slice(1)+' →';
+    if(window._supabaseReady)doSetup();else setTimeout(doSetup,400);
+  }else{
+    document.getElementById('loginErr').classList.add('show');
+    document.getElementById('loginPass').value='';
+  }
+}
+function doLogout(){
+  if(!confirm('Yakin ingin logout?'))return;
+  if(_realtimeChannel&&sb){sb.removeChannel(_realtimeChannel);_realtimeChannel=null;}
+  localStorage.removeItem('currentUser');currentUser=null;
+  document.getElementById('app').style.display='none';
+  document.getElementById('loginScreen').style.display='flex';
+  document.getElementById('loginPass').value='';
+}
+function checkAutoLogin(){
+  const saved=localStorage.getItem('currentUser');
+  if(saved&&USERS[saved]){
+    currentUser=saved;
+    const b=document.getElementById('userBadge');
+    if(b)b.textContent=currentUser.charAt(0).toUpperCase()+currentUser.slice(1)+' →';
+    document.getElementById('loginScreen').style.display='none';
+    return true;
+  }return false;
+}
 
 // ════ SETUP ════
 window.doSetup=async function(){
@@ -849,20 +1247,94 @@ window.doSetup=async function(){
   try{sb=window._createSupabaseClient(window._SB_URL,window._SB_KEY);}catch(e){alert('Supabase error: '+e.message);return;}
   document.getElementById('app').style.display='block';
   await loadSettingsFromSB();
-  initEmailJS();initForm();initTodoKat();setMonth();loadNotifs();
+  initEmailJS();initForm();initTodoKat();setMonth();
   document.getElementById('selBln').addEventListener('change',()=>{if(!window._silentSet){_currentRules=null;renderDash();}});
   document.getElementById('selThn').addEventListener('change',()=>{if(!window._silentSet){_currentRules=null;renderDash();}});
   await requestPushPermission();
-  fetchAll();
+  // ════ LOAD NOTIFS DARI DB ════
+  await loadNotifsFromDB();
+  // ════ SETUP REALTIME ════
+  setupRealtimeNotifications();
+  await fetchAll();
   checkTodoDueReminders();
   setInterval(checkTodoDueReminders,60000);
+  // Cek apakah sudah di-install sebagai PWA
+  checkPWAInstallPrompt();
 };
+
+// ════ PWA INSTALL PROMPT ════
+let _deferredPrompt=null;
+window.addEventListener('beforeinstallprompt',(e)=>{e.preventDefault();_deferredPrompt=e;showPWABanner();});
+function showPWABanner(){
+  // Jangan tampilkan kalau sudah pernah dismiss
+  if(localStorage.getItem('pwa_banner_dismissed'))return;
+  if(!currentUser)return;
+  const banner=document.createElement('div');
+  banner.className='pwa-banner';banner.id='pwaBanner';
+  banner.innerHTML=`
+    <div class="pwa-banner-icon">📱</div>
+    <div class="pwa-banner-text">
+      <strong>Install Keuangan JN</strong>
+      Pasang ke Home Screen untuk notifikasi lockscreen iOS
+    </div>
+    <div class="pwa-banner-btns">
+      <button class="btn-pwa-install" onclick="installPWA()">Install</button>
+      <button class="btn-pwa-dismiss" onclick="dismissPWA()">✕</button>
+    </div>`;
+  document.body.appendChild(banner);
+}
+async function installPWA(){
+  const banner=document.getElementById('pwaBanner');
+  if(_deferredPrompt){
+    _deferredPrompt.prompt();
+    const{outcome}=await _deferredPrompt.userChoice;
+    if(outcome==='accepted')toast('✅ App berhasil diinstall!','ok');
+    _deferredPrompt=null;
+  }else{
+    // iOS: tidak ada beforeinstallprompt, tampilkan instruksi manual
+    toast('iOS: Tap Share → "Add to Home Screen"','inf');
+  }
+  if(banner)banner.remove();
+}
+function dismissPWA(){localStorage.setItem('pwa_banner_dismissed','1');const b=document.getElementById('pwaBanner');if(b)b.remove();}
+function checkPWAInstallPrompt(){
+  // iOS tidak trigger beforeinstallprompt, tapi kita bisa deteksi
+  const isIOS=/iphone|ipad|ipod/i.test(navigator.userAgent);
+  const isStandalone=window.matchMedia('(display-mode:standalone)').matches||window.navigator.standalone;
+  if(isIOS&&!isStandalone&&!localStorage.getItem('pwa_banner_dismissed')){
+    // Tampilkan banner iOS manual setelah 5 detik
+    setTimeout(()=>{
+      if(!currentUser)return;
+      const banner=document.createElement('div');
+      banner.className='pwa-banner';banner.id='pwaBanner';
+      banner.innerHTML=`
+        <div class="pwa-banner-icon">📱</div>
+        <div class="pwa-banner-text">
+          <strong>Aktifkan Notifikasi iOS</strong>
+          Tap Share → "Add to Home Screen" lalu buka dari sana
+        </div>
+        <div class="pwa-banner-btns">
+          <button class="btn-pwa-dismiss" onclick="dismissPWA()">OK</button>
+        </div>`;
+      document.body.appendChild(banner);
+    },5000);
+  }
+}
 
 // ════ SPLASH→APP ════
 window.addEventListener('load',function(){
   const splashMin=2200,startTime=Date.now();
-  function finishSplash(){const elapsed=Date.now()-startTime,delay=Math.max(0,splashMin-elapsed);setTimeout(()=>{if(window._splashComplete)window._splashComplete();const isLoggedIn=checkAutoLogin();if(!isLoggedIn){document.getElementById('loginScreen').style.display='flex';}else{if(window._supabaseReady)doSetup();else setTimeout(doSetup,400);}},delay);}
-  if(window._supabaseReady){finishSplash();}else{let c=0;const iv=setInterval(()=>{c++;if(window._supabaseReady||c>30){clearInterval(iv);finishSplash();}},100);}
+  function finishSplash(){
+    const elapsed=Date.now()-startTime,delay=Math.max(0,splashMin-elapsed);
+    setTimeout(()=>{
+      if(window._splashComplete)window._splashComplete();
+      const isLoggedIn=checkAutoLogin();
+      if(!isLoggedIn){document.getElementById('loginScreen').style.display='flex';}
+      else{if(window._supabaseReady)doSetup();else setTimeout(doSetup,400);}
+    },delay);
+  }
+  if(window._supabaseReady){finishSplash();}
+  else{let c=0;const iv=setInterval(()=>{c++;if(window._supabaseReady||c>30){clearInterval(iv);finishSplash();}},100);}
 });
 
 // ════ DARK MODE ════
@@ -907,7 +1379,9 @@ async function simpan(){
   else{
     toast('✓ Transaksi tersimpan!','ok');
     const label=currentTipe==='pemasukan'?'Pemasukan':'Pengeluaran';
-    addNotif(`${label} Rp ${rp(jml)} — ${kat}${sub?' / '+sub:''} berhasil dicatat`,'transaksi');
+    const notifMsg=`${label} Rp ${rp(jml)} — ${kat}${sub?' / '+sub:''} oleh ${currentUser.charAt(0).toUpperCase()+currentUser.slice(1)}`;
+    // ★ Kirim notif ke SEMUA user via Supabase DB
+    addNotif(notifMsg,'transaksi','all');
     resetForm();fetchAll(true);
     syncToSheets((inserted&&inserted[0])?inserted[0]:row);
   }
@@ -919,19 +1393,23 @@ function resetForm(){const el=document.getElementById('fJml');el.value='';el.dat
 let _fetching=false;
 async function fetchAll(refreshView=false){
   if(_fetching)return;_fetching=true;
-  const[{data:tData},{data:tdData}]=await Promise.all([sb.from('transaksi').select('*').order('tanggal',{ascending:false}),sb.from('todo_bayar').select('*').order('tanggal_bayar',{ascending:true})]);
+  const[{data:tData},{data:tdData}]=await Promise.all([
+    sb.from('transaksi').select('*').order('tanggal',{ascending:false}),
+    sb.from('todo_bayar').select('*').order('tanggal_bayar',{ascending:true})
+  ]);
   _fetching=false;allData=tData||[];todoData=tdData||[];
-  if(refreshView){const ap=document.querySelector('.page.active')?.id;if(ap==='page-trans')renderTrans(allData);if(ap==='page-dash')renderDash();if(ap==='page-equity')renderEquity();if(ap==='page-todo')renderTodo();}
+  if(refreshView){
+    const ap=document.querySelector('.page.active')?.id;
+    if(ap==='page-trans')renderTrans(allData);
+    if(ap==='page-dash')renderDash();
+    if(ap==='page-equity')renderEquity();
+    if(ap==='page-todo')renderTodo();
+  }
 }
 
 // ════ TODO ════
 function initTodoKat(){const sel=document.getElementById('todoKat');sel.innerHTML='<option value="">— Pilih Kategori —</option>';Object.keys(KAT.pengeluaran).forEach(k=>sel.innerHTML+=`<option>${k}</option>`);}
-function onTodoKatChange(){
-  const kat=document.getElementById('todoKat').value;
-  const sel=document.getElementById('todoSub');
-  sel.innerHTML='<option value="">— Pilih Sub Kategori —</option>';
-  if(kat&&KAT.pengeluaran[kat])KAT.pengeluaran[kat].forEach(s=>sel.innerHTML+=`<option>${s}</option>`);
-}
+function onTodoKatChange(){const kat=document.getElementById('todoKat').value,sel=document.getElementById('todoSub');sel.innerHTML='<option value="">— Pilih Sub Kategori —</option>';if(kat&&KAT.pengeluaran[kat])KAT.pengeluaran[kat].forEach(s=>sel.innerHTML+=`<option>${s}</option>`);}
 function toggleAutoRecord(){_todoAutoRecord=!_todoAutoRecord;const el=document.getElementById('autoRecordToggle');if(el)el.className='auto-record-toggle'+(_todoAutoRecord?' active':'');}
 function toggleRecurring(){_todoRecurring=!_todoRecurring;const el=document.getElementById('recurringToggle');if(el)el.className='recurring-toggle'+(_todoRecurring?' active':'');}
 function setAutoRecord(val){_todoAutoRecord=val;const el=document.getElementById('autoRecordToggle');if(el)el.className='auto-record-toggle'+(val?' active':'');}
@@ -1033,8 +1511,7 @@ function openTodoModal(editId){
     document.getElementById('todoSub').innerHTML='<option value="">— Pilih Sub Kategori —</option>';
     document.getElementById('todoPayer').value='jauhar';
     document.getElementById('todoCatatan').value='';
-    setAutoRecord(true);
-    setRecurring(false);
+    setAutoRecord(true);setRecurring(false);
   }
   document.getElementById('todoOverlay').classList.add('open');
 }
@@ -1045,25 +1522,26 @@ async function saveTodo(){
   const tgl=document.getElementById('todoTgl').value;
   if(!nama){toast('Nama tagihan wajib diisi!','err');return;}
   if(!tgl){toast('Tanggal wajib diisi!','err');return;}
-  const row={
-    nama,jumlah:jml,tanggal_bayar:tgl,
-    kategori:document.getElementById('todoKat').value,
-    sub_kategori:document.getElementById('todoSub').value,
-    payer:document.getElementById('todoPayer').value,
-    catatan:document.getElementById('todoCatatan').value.trim(),
-    auto_record:_todoAutoRecord,
-    is_recurring:_todoRecurring,
-    selesai:false
-  };
+  const row={nama,jumlah:jml,tanggal_bayar:tgl,kategori:document.getElementById('todoKat').value,sub_kategori:document.getElementById('todoSub').value,payer:document.getElementById('todoPayer').value,catatan:document.getElementById('todoCatatan').value.trim(),auto_record:_todoAutoRecord,is_recurring:_todoRecurring,selesai:false};
   const editId=document.getElementById('todoId').value;
   if(editId){
     const{error}=await sb.from('todo_bayar').update(row).eq('id',editId);
     if(error)toast('Gagal update: '+error.message,'err');
-    else{toast('✓ Todo diupdate!','ok');closeModal('todoOverlay');fetchAll(true);}
+    else{
+      toast('✓ Todo diupdate!','ok');
+      // ★ Broadcast ke semua user
+      addNotif(`Todo diupdate: ${nama} — Rp ${rp(jml)} jatuh tempo ${fmtDate(tgl)} oleh ${currentUser.charAt(0).toUpperCase()+currentUser.slice(1)}`,'todo','all');
+      closeModal('todoOverlay');fetchAll(true);
+    }
   }else{
     const{error}=await sb.from('todo_bayar').insert([row]);
     if(error)toast('Gagal simpan: '+error.message,'err');
-    else{toast('✓ Todo ditambahkan!','ok');addNotif(`Todo baru: ${nama} — Rp ${rp(jml)} jatuh tempo ${fmtDate(tgl)}`,'info');closeModal('todoOverlay');fetchAll(true);}
+    else{
+      toast('✓ Todo ditambahkan!','ok');
+      // ★ Broadcast ke semua user
+      addNotif(`Todo baru: ${nama} — Rp ${rp(jml)} jatuh tempo ${fmtDate(tgl)} oleh ${currentUser.charAt(0).toUpperCase()+currentUser.slice(1)}`,'todo','all');
+      closeModal('todoOverlay');fetchAll(true);
+    }
   }
 }
 
@@ -1079,35 +1557,56 @@ async function toggleTodoDone(id,currentlyDone){
       if(terr){toast('Todo selesai tapi gagal catat transaksi: '+terr.message,'err');}
       else{
         toast('✅ Todo selesai + transaksi dicatat otomatis!','ok');
-        addNotif(`${todo.nama} selesai — Rp ${rp(todo.jumlah)} dicatat ke transaksi`,'transaksi');
-        pushNotif('✅ Pembayaran Selesai',`${todo.nama} — Rp ${rp(todo.jumlah)}`);
+        // ★ Broadcast ke semua user
+        addNotif(`✅ ${todo.nama} selesai — Rp ${rp(todo.jumlah)} dicatat oleh ${currentUser.charAt(0).toUpperCase()+currentUser.slice(1)}`,'transaksi','all');
+        pushNotifViaSW('✅ Pembayaran Selesai',`${todo.nama} — Rp ${rp(todo.jumlah)}`);
         syncToSheets((inserted&&inserted[0])?inserted[0]:trow);
         if(todo.is_recurring){
           const nextDate=new Date(todo.tanggal_bayar);nextDate.setMonth(nextDate.getMonth()+1);
           const nextTgl=nextDate.toISOString().split('T')[0];
           await sb.from('todo_bayar').insert([{...todo,id:undefined,selesai:false,tanggal_bayar:nextTgl,tanggal_selesai:null}]);
+          addNotif(`🔁 Todo berulang dibuat: ${todo.nama} untuk ${fmtDate(nextTgl)}`,'todo','all');
           toast('🔁 Todo berulang bulan depan dibuat otomatis!','inf');
         }
       }
-    }else{toast('✅ Todo ditandai selesai!','ok');}
+    }else{
+      toast('✅ Todo ditandai selesai!','ok');
+      const todo=todoData.find(t=>t.id==id);
+      if(todo)addNotif(`✅ ${todo.nama} selesai oleh ${currentUser.charAt(0).toUpperCase()+currentUser.slice(1)}`,'transaksi','all');
+    }
   }else{toast('Todo dibuka kembali','inf');}
   fetchAll(true);
 }
 
-async function deleteTodo(id){if(!confirm('Hapus todo ini?'))return;const{error}=await sb.from('todo_bayar').delete().eq('id',id);if(error)toast('Gagal hapus: '+error.message,'err');else{toast('Todo dihapus','ok');fetchAll(true);}}
+async function deleteTodo(id){
+  if(!confirm('Hapus todo ini?'))return;
+  const{error}=await sb.from('todo_bayar').delete().eq('id',id);
+  if(error)toast('Gagal hapus: '+error.message,'err');
+  else{toast('Todo dihapus','ok');fetchAll(true);}
+}
 
 let _lastReminderCheck='';
 async function checkTodoDueReminders(){
-  const today=getTodayStr();if(_lastReminderCheck===today)return;
-  const lastCheck=localStorage.getItem('jn_last_reminder_check');if(lastCheck===today){_lastReminderCheck=today;return;}
-  _lastReminderCheck=today;localStorage.setItem('jn_last_reminder_check',today);
+  const today=getTodayStr();
+  if(_lastReminderCheck===today)return;
+  const lastCheck=localStorage.getItem('jn_last_reminder_check');
+  if(lastCheck===today){_lastReminderCheck=today;return;}
+  _lastReminderCheck=today;
+  localStorage.setItem('jn_last_reminder_check',today);
   const due=todoData.filter(t=>!t.selesai&&(t.tanggal_bayar===today||t.tanggal_bayar<today));
-  due.forEach(todo=>{const msg=todo.tanggal_bayar<today?`⚠️ OVERDUE: ${todo.nama} — Rp ${rp(todo.jumlah)} jatuh tempo ${fmtDate(todo.tanggal_bayar)}`:`🔔 Jatuh tempo HARI INI: ${todo.nama} — Rp ${rp(todo.jumlah)}`;addNotif(msg,'todo_due');pushNotif('💸 Tagihan Jatuh Tempo',`${todo.nama} — Rp ${rp(todo.jumlah)}`);sendEmailJSTodoAlert(todo);});
+  for(const todo of due){
+    const msg=todo.tanggal_bayar<today
+      ?`⚠️ OVERDUE: ${todo.nama} — Rp ${rp(todo.jumlah)} jatuh tempo ${fmtDate(todo.tanggal_bayar)}`
+      :`🔔 Jatuh tempo HARI INI: ${todo.nama} — Rp ${rp(todo.jumlah)}`;
+    // ★ Broadcast reminder ke semua user
+    addNotif(msg,'todo_due','all');
+    pushNotifViaSW('💸 Tagihan Jatuh Tempo',`${todo.nama} — Rp ${rp(todo.jumlah)}`);
+    sendEmailJSTodoAlert(todo);
+  }
 }
 
 // ════ RULE EDITOR ════
 function toggleRuleEditor(){ruleEditorOpen=!ruleEditorOpen;if(ruleEditorOpen)startRuleEditor();else{document.getElementById('ruleEditorWrap').innerHTML='';}}
-
 async function startRuleEditor(){
   const bln=parseInt(document.getElementById('selBln').value),thn=parseInt(document.getElementById('selThn').value);
   const rules=await getCurrentRulesForMonth(bln,thn);
@@ -1116,37 +1615,9 @@ async function startRuleEditor(){
   _editorRules=JSON.parse(JSON.stringify(rules));
   renderRuleEditor(bln,thn);
 }
-
-// ════ HELPERS: getAllSubKats + addRuleSubByInput + removeRuleKat ════
-function getAllSubKats(){
-  const all=[];
-  Object.values(KAT.pengeluaran).forEach(subs=>subs.forEach(s=>{if(!all.includes(s))all.push(s);}));
-  return all.sort((a,b)=>a.localeCompare(b,'id'));
-}
-function addRuleSubByInput(i){
-  const input=document.getElementById('reSubInput_'+i);
-  if(!input||!input.value.trim())return;
-  const val=input.value.trim();
-  if(!_editorRules[i].customKats)_editorRules[i].customKats=[];
-  if(!_editorRules[i].customKats.includes(val)){
-    _editorRules[i].customKats.push(val);
-  }
-  input.value='';
-  // Re-render tags
-  const tagsEl=document.getElementById('reTags_'+i);
-  if(tagsEl)tagsEl.innerHTML=_editorRules[i].customKats.map((c,ci)=>`<span class="re-sub-tag">${c}<button onclick="removeRuleKat(${i},${ci})">×</button></span>`).join('');
-  // Hide warning
-  const warn=document.getElementById('reKatWarn_'+i);
-  if(warn)warn.style.display=_editorRules[i].customKats.length===0?'block':'none';
-}
-function removeRuleKat(i,ci){
-  if(!_editorRules[i]?.customKats)return;
-  _editorRules[i].customKats.splice(ci,1);
-  const tagsEl=document.getElementById('reTags_'+i);
-  if(tagsEl)tagsEl.innerHTML=_editorRules[i].customKats.map((c,ci2)=>`<span class="re-sub-tag">${c}<button onclick="removeRuleKat(${i},${ci2})">×</button></span>`).join('');
-  const warn=document.getElementById('reKatWarn_'+i);
-  if(warn)warn.style.display=_editorRules[i].customKats.length===0?'block':'none';
-}
+function getAllSubKats(){const all=[];Object.values(KAT.pengeluaran).forEach(subs=>subs.forEach(s=>{if(!all.includes(s))all.push(s);}));return all.sort((a,b)=>a.localeCompare(b,'id'));}
+function addRuleSubByInput(i){const input=document.getElementById('reSubInput_'+i);if(!input||!input.value.trim())return;const val=input.value.trim();if(!_editorRules[i].customKats)_editorRules[i].customKats=[];if(!_editorRules[i].customKats.includes(val)){_editorRules[i].customKats.push(val);}input.value='';const tagsEl=document.getElementById('reTags_'+i);if(tagsEl)tagsEl.innerHTML=_editorRules[i].customKats.map((c,ci)=>`<span class="re-sub-tag">${c}<button onclick="removeRuleKat(${i},${ci})">×</button></span>`).join('');const warn=document.getElementById('reKatWarn_'+i);if(warn)warn.style.display=_editorRules[i].customKats.length===0?'block':'none';}
+function removeRuleKat(i,ci){if(!_editorRules[i]?.customKats)return;_editorRules[i].customKats.splice(ci,1);const tagsEl=document.getElementById('reTags_'+i);if(tagsEl)tagsEl.innerHTML=_editorRules[i].customKats.map((c,ci2)=>`<span class="re-sub-tag">${c}<button onclick="removeRuleKat(${i},${ci2})">×</button></span>`).join('');const warn=document.getElementById('reKatWarn_'+i);if(warn)warn.style.display=_editorRules[i].customKats.length===0?'block':'none';}
 
 function renderRuleEditor(bln,thn){
   if(!bln){bln=parseInt(document.getElementById('selBln').value);thn=parseInt(document.getElementById('selThn').value);}
@@ -1155,30 +1626,25 @@ function renderRuleEditor(bln,thn){
   const total=Math.round(_editorRules.reduce((s,r)=>s+Number(r.pct),0)*10)/10;
   const isGood=Math.abs(total-100)<0.1;
   let h='<div class="rule-editor open">';
-  h+=`<div class="re-month-label">⚠️ Rules ini khusus untuk <strong>${BULAN[bln]} ${thn}</strong>. Perubahan hanya berlaku bulan ini kecuali kamu centang "Set sebagai default".</div>`;
+  h+=`<div class="re-month-label">⚠️ Rules ini khusus untuk <strong>${BULAN[bln]} ${thn}</strong>.</div>`;
   h+=`<div class="re-header"><span class="re-title">⚙️ Edit Sections Alokasi</span><span class="re-total ${isGood?'':'bad'}" id="reTotal">Total: ${total}%</span></div>`;
-  h+=`<div style="font-size:11px;color:var(--text3);margin-bottom:10px;padding:8px 10px;background:var(--surface2);border-radius:var(--r);border:1px solid var(--border)">🔒 Section wajib (mk/op/dd/tb) tidak bisa dihapus. Custom section <strong style="color:var(--red)">wajib</strong> punya minimal 1 sub kategori.</div>`;
   h+='<div class="re-rows" id="reRows">';
   _editorRules.forEach((r,i)=>{
     const locked=r.locked||isLocked(r.key);
     const customKats=r.customKats||[];
     let katHtml='';
     if(!locked){
-      // ═══ PATCH: Sub kategori required dengan searchable datalist ═══
       const allSubKats=getAllSubKats();
       const subListId='reSubList_'+i;
       katHtml=`<div class="re-kat-wrap" style="grid-column:1/-1;margin-left:22px">
         <label style="color:var(--red);margin-bottom:4px">★ Sub Kategori yang dihitung (wajib)</label>
         <div class="re-sub-tags" id="reTags_${i}">${customKats.map((c,ci)=>`<span class="re-sub-tag">${c}<button onclick="removeRuleKat(${i},${ci})">×</button></span>`).join('')}</div>
         <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
-          <input class="re-name" id="reSubInput_${i}" list="${subListId}" 
-            placeholder="🔍 Ketik untuk mencari sub kategori..." 
-            style="flex:1;min-width:0"
-            onkeydown="if(event.key==='Enter'){event.preventDefault();addRuleSubByInput(${i});}">
+          <input class="re-name" id="reSubInput_${i}" list="${subListId}" placeholder="🔍 Ketik sub kategori..." style="flex:1;min-width:0" onkeydown="if(event.key==='Enter'){event.preventDefault();addRuleSubByInput(${i});}">
           <datalist id="${subListId}">${allSubKats.map(s=>`<option value="${s}">`).join('')}</datalist>
           <button class="re-sub-add" onclick="addRuleSubByInput(${i})">+ Tambah</button>
         </div>
-        <div id="reKatWarn_${i}" style="font-size:11px;color:var(--red);margin-top:4px;padding:4px 8px;background:var(--red-l);border-radius:6px;display:${customKats.length===0?'block':'none'}">⚠ Wajib minimal 1 sub kategori sebelum menyimpan</div>
+        <div id="reKatWarn_${i}" style="font-size:11px;color:var(--red);margin-top:4px;padding:4px 8px;background:var(--red-l);border-radius:6px;display:${customKats.length===0?'block':'none'}">⚠ Wajib minimal 1 sub kategori</div>
       </div>`;
     }
     h+=`<div style="display:grid;grid-template-columns:auto 1fr auto 1fr auto;align-items:center;gap:6px;margin-bottom:${!locked?'0':'4px'}">
@@ -1201,22 +1667,16 @@ function renderRuleEditor(bln,thn){
   </div></div>`;
   wrap.innerHTML=h;
 }
-
 function syncEditorRow(i){if(!_editorRules[i])return;const nameEl=document.getElementById('reName'+i),pctEl=document.getElementById('rePct'+i);if(nameEl&&!(_editorRules[i].locked||isLocked(_editorRules[i].key)))_editorRules[i].lbl=nameEl.value;if(pctEl)_editorRules[i].pct=parseFloat(pctEl.value)||0;updateReTotal();}
 function updateReTotal(){const total=Math.round(_editorRules.reduce((s,r)=>s+Number(r.pct),0)*10)/10;const isGood=Math.abs(total-100)<0.1;const el=document.getElementById('reTotal');if(el){el.textContent='Total: '+total+'%';el.className='re-total'+(isGood?'':' bad');}const saveBtn=document.getElementById('btnReSave');if(saveBtn)saveBtn.disabled=!isGood;}
 function cycleColor(i){if(!_editorRules[i])return;const ci=RULE_COLORS.indexOf(_editorRules[i].color);_editorRules[i].color=RULE_COLORS[(ci+1)%RULE_COLORS.length];const bln=parseInt(document.getElementById('selBln').value),thn=parseInt(document.getElementById('selThn').value);renderRuleEditor(bln,thn);}
 function delRuleRow(i){const r=_editorRules[i];if(!r)return;if(r.locked||isLocked(r.key)){toast('Section wajib tidak bisa dihapus!','err');return;}if(_editorRules.length<=1){toast('Minimal 1 section!','err');return;}const removedPct=Number(r.pct)||0;_editorRules.splice(i,1);if(removedPct>0){const target=_editorRules.find(x=>!x.locked&&!isLocked(x.key))||_editorRules[0];if(target)target.pct=Math.round((Number(target.pct)+removedPct)*10)/10;}const bln=parseInt(document.getElementById('selBln').value),thn=parseInt(document.getElementById('selThn').value);renderRuleEditor(bln,thn);}
 function addRuleRow(){if(!_editorRules||_editorRules.length===0)_editorRules=JSON.parse(JSON.stringify(getDefaultRules()));let donor=null;for(let i=_editorRules.length-1;i>=0;i--){if(!_editorRules[i].locked&&!isLocked(_editorRules[i].key)){donor=_editorRules[i];break;}}if(!donor)donor=_editorRules[_editorRules.length-1];const give=Math.min(10,Math.max(0,Number(donor.pct)-1));donor.pct=Math.round((Number(donor.pct)-give)*10)/10;_editorRules.push({key:'custom_'+Date.now(),lbl:'Section Baru',pct:give,color:RULE_COLORS[_editorRules.length%RULE_COLORS.length],locked:false,customKats:[]});const bln=parseInt(document.getElementById('selBln').value),thn=parseInt(document.getElementById('selThn').value);renderRuleEditor(bln,thn);}
-
 async function saveRulesNow(){
   const total=Math.round(_editorRules.reduce((s,r)=>s+Number(r.pct),0)*10)/10;
   if(Math.abs(total-100)>=0.1){toast('Total harus 100%! Sekarang '+total+'%','err');return;}
-  // ═══ PATCH: Validasi sub kategori wajib untuk custom sections ═══
   const missingKat=_editorRules.filter(r=>!r.locked&&!isLocked(r.key)&&(!r.customKats||r.customKats.length===0));
-  if(missingKat.length>0){
-    toast('Section "'+missingKat[0].lbl+'" wajib punya minimal 1 sub kategori!','err');
-    return;
-  }
+  if(missingKat.length>0){toast('Section "'+missingKat[0].lbl+'" wajib punya minimal 1 sub kategori!','err');return;}
   const btn=document.getElementById('btnReSave');if(btn){btn.disabled=true;btn.textContent='⏳ Menyimpan...';}
   const saveAsBase=document.getElementById('saveAsDefault')?.checked||false;
   const bln=parseInt(document.getElementById('selBln').value),thn=parseInt(document.getElementById('selThn').value);
@@ -1230,14 +1690,11 @@ async function saveRulesNow(){
 
 // ════ DASHBOARD ════
 function isDark(){return document.documentElement.getAttribute('data-theme')==='dark';}
-
-// ═══ PATCH: computeRuleActual menggunakan sub_kategori untuk custom rules ═══
 function computeRuleActual(r,allExp){
   if(r.key==='mk')return allExp.filter(t=>isMakan(t)).reduce((s,t)=>s+t.jumlah,0);
   if(r.key==='tb')return allExp.filter(t=>isTabungan(t)).reduce((s,t)=>s+t.jumlah,0);
   if(r.key==='dd')return 0;
   if(r.key==='op')return allExp.filter(t=>isOp(t)).reduce((s,t)=>s+t.jumlah,0);
-  // Custom rules: cocokkan dengan sub_kategori transaksi
   if(r.customKats&&r.customKats.length>0)return allExp.filter(t=>r.customKats.includes(t.sub_kategori)).reduce((s,t)=>s+t.jumlah,0);
   return allExp.reduce((s,t)=>s+t.jumlah,0);
 }
@@ -1246,7 +1703,6 @@ function getItemsForRule(r,allExp){
   if(r.key==='tb')return allExp.filter(t=>isTabungan(t));
   if(r.key==='dd')return [];
   if(r.key==='op')return allExp.filter(t=>isOp(t));
-  // Custom rules: cocokkan dengan sub_kategori
   if(r.customKats&&r.customKats.length>0)return allExp.filter(t=>r.customKats.includes(t.sub_kategori));
   return allExp;
 }
@@ -1276,50 +1732,11 @@ async function renderDash(){
   const topMasuk=Object.entries(masukMap).sort((a,b)=>b[1]-a[1]).slice(0,5);
   const prevSubMap={};prev.filter(t=>t.tipe==='pengeluaran').forEach(t=>{const k=t.sub_kategori||t.deskripsi||'Lain-lain';prevSubMap[k]=(prevSubMap[k]||0)+t.jumlah;});
   const cmpRows=topSub.slice(0,8).map(([n,v])=>({n,v,p:prevSubMap[n]||0,pct:prevSubMap[n]?Math.round((v-prevSubMap[n])/prevSubMap[n]*100):null}));
-
-  // ═══ PATCH: Cascade logic yang benar untuk Dana Darurat & Tabungan ═══
   _ruleDetails={};
   const allExp=cur.filter(t=>t.tipe==='pengeluaran');
-  RULES.forEach(r=>{
-    r.items=getItemsForRule(r,allExp);
-    r.actual=computeRuleActual(r,allExp);
-    r.target=masuk*r.pct/100;
-    r.sisa=r.target-r.actual;
-    r.over=r.actual>r.target;
-    r.used=r.target>0?Math.min(Math.round(r.actual/r.target*100),100):0;
-    r.cascadeNote='';
-    _ruleDetails[r.key]={lbl:r.lbl,items:r.items};
-  });
-  // Cascade: jika Operational over-budget, ambil dari Dana Darurat dulu, lalu Tabungan
+  RULES.forEach(r=>{r.items=getItemsForRule(r,allExp);r.actual=computeRuleActual(r,allExp);r.target=masuk*r.pct/100;r.sisa=r.target-r.actual;r.over=r.actual>r.target;r.used=r.target>0?Math.min(Math.round(r.actual/r.target*100),100):0;r.cascadeNote='';_ruleDetails[r.key]={lbl:r.lbl,items:r.items};});
   const opR=RULES.find(r=>r.key==='op'),ddR=RULES.find(r=>r.key==='dd'),tbR=RULES.find(r=>r.key==='tb');
-  if(opR&&opR.sisa<0&&ddR){
-    const overAmt=Math.abs(opR.sisa);
-    const ddAvail=Math.max(0,ddR.target);
-    const ddUsed=Math.min(overAmt,ddAvail);
-    if(ddUsed>0){
-      // DD: actual = ddUsed (berapa yang terpaksa dipakai), sisa = target - ddUsed
-      ddR.actual=ddUsed;
-      ddR.sisa=ddR.target-ddUsed;  // sisa DD setelah diambil cascade (0 jika habis)
-      ddR.over=ddUsed>ddR.target;
-      ddR.used=ddR.target>0?Math.min(Math.round(ddUsed/ddR.target*100),100):100;
-      ddR.cascadeNote=`⚡ Dipakai: Rp ${rp(ddUsed)} | Sisa: Rp ${rp(Math.max(0,ddR.sisa))}`;
-      _ruleDetails['dd'].items=[];
-    }
-    const remaining=overAmt-ddUsed;
-    if(remaining>0&&tbR){
-      const tbAvail=Math.max(0,tbR.target-tbR.actual);
-      const tbCascadeUsed=Math.min(remaining,tbAvail);
-      if(tbCascadeUsed>0){
-        tbR.actual=tbR.actual+tbCascadeUsed;
-        tbR.sisa=tbR.target-tbR.actual;
-        tbR.over=tbR.actual>tbR.target;
-        tbR.used=tbR.target>0?Math.min(Math.round(tbR.actual/tbR.target*100),100):100;
-        tbR.cascadeNote=`⚡ Dipakai: Rp ${rp(tbCascadeUsed)} | Sisa: Rp ${rp(Math.max(0,tbR.sisa))}`;
-      }
-    }
-  }
-  // ═══ END PATCH ═══
-
+  if(opR&&opR.sisa<0&&ddR){const overAmt=Math.abs(opR.sisa);const ddAvail=Math.max(0,ddR.target);const ddUsed=Math.min(overAmt,ddAvail);if(ddUsed>0){ddR.actual=ddUsed;ddR.sisa=ddR.target-ddUsed;ddR.over=ddUsed>ddR.target;ddR.used=ddR.target>0?Math.min(Math.round(ddUsed/ddR.target*100),100):100;ddR.cascadeNote=`⚡ Dipakai: Rp ${rp(ddUsed)} | Sisa: Rp ${rp(Math.max(0,ddR.sisa))}`;_ruleDetails['dd'].items=[];}const remaining=overAmt-ddUsed;if(remaining>0&&tbR){const tbAvail=Math.max(0,tbR.target-tbR.actual);const tbCascadeUsed=Math.min(remaining,tbAvail);if(tbCascadeUsed>0){tbR.actual=tbR.actual+tbCascadeUsed;tbR.sisa=tbR.target-tbR.actual;tbR.over=tbR.actual>tbR.target;tbR.used=tbR.target>0?Math.min(Math.round(tbR.actual/tbR.target*100),100):100;tbR.cascadeNote=`⚡ Dipakai: Rp ${rp(tbCascadeUsed)} | Sisa: Rp ${rp(Math.max(0,tbR.sisa))}`;}}};
   let repCls='mini-report',repTxt='';
   if(!cur.length)repTxt='Belum ada transaksi bulan ini.';
   else if(sisa>=masuk*0.2){repCls+=' good';repTxt='Keuangan sehat! Sisa Rp '+rp(sisa)+' ('+Math.round(sisa/masuk*100)+'% dari pemasukan).';}
@@ -1328,74 +1745,26 @@ async function renderDash(){
   const payerData={};
   ['jauhar','nita','bersama'].forEach(p=>{const items=cur.filter(t=>t.tipe==='pengeluaran'&&(t.payer||'jauhar')===p);const kb={};items.forEach(t=>kb[t.kategori]=(kb[t.kategori]||0)+t.jumlah);payerData[p]={total:items.reduce((s,t)=>s+t.jumlah,0),sorted:Object.entries(kb).sort((a,b)=>b[1]-a[1])};});
   function deltaBadge(d,forExpense){if(d===0)return '<span class="delta-neu">— sama</span>';const arrow=d>0?'▲':'▼';const cls=forExpense?(d>0?'delta-up':'delta-down'):(d>0?'delta-down':'delta-up');return `<span class="${cls}">${arrow} ${Math.abs(d)}%</span><span style="color:var(--text3)"> vs bln lalu</span>`;}
-  const today=getTodayStr();
-  const todoDue=todoData.filter(t=>!t.selesai&&(t.tanggal_bayar<=today||t.tanggal_bayar.startsWith(thn+'-'+String(bln).padStart(2,'0'))));
+  const today2=getTodayStr();
+  const todoDue=todoData.filter(t=>!t.selesai&&(t.tanggal_bayar<=today2||t.tanggal_bayar.startsWith(thn+'-'+String(bln).padStart(2,'0'))));
   const todoDueAmt=todoDue.reduce((s,t)=>s+t.jumlah,0);
   let h='';
-  h+=`<div class="stats-row">
-    <div class="stat green"><div class="stat-lbl">Total Pemasukan</div><div class="stat-val green">Rp ${rp(masuk)}</div><div class="stat-sub">${deltaBadge(dM,false)}</div></div>
-    <div class="stat red"><div class="stat-lbl">Total Pengeluaran</div><div class="stat-val red">Rp ${rp(keluar)}</div><div class="stat-sub">${deltaBadge(dK,true)}</div></div>
-    <div class="stat neutral"><div class="stat-lbl">Sisa Saldo</div><div class="stat-val ${sisa>=0?'':'red'}">Rp ${rp(Math.abs(sisa))}${sisa<0?' (-)':''}</div><div class="stat-sub"><span class="delta-neu">${cur.length} transaksi</span></div></div>
-  </div>`;
+  h+=`<div class="stats-row"><div class="stat green"><div class="stat-lbl">Total Pemasukan</div><div class="stat-val green">Rp ${rp(masuk)}</div><div class="stat-sub">${deltaBadge(dM,false)}</div></div><div class="stat red"><div class="stat-lbl">Total Pengeluaran</div><div class="stat-val red">Rp ${rp(keluar)}</div><div class="stat-sub">${deltaBadge(dK,true)}</div></div><div class="stat neutral"><div class="stat-lbl">Sisa Saldo</div><div class="stat-val ${sisa>=0?'':'red'}">Rp ${rp(Math.abs(sisa))}${sisa<0?' (-)':''}</div><div class="stat-sub"><span class="delta-neu">${cur.length} transaksi</span></div></div></div>`;
   if(todoDueAmt>0){h+=`<div style="background:var(--amber-l);border:1px solid var(--amber);border-radius:var(--r-lg);padding:12px 16px;margin-bottom:1rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px"><div>⚠️ <strong>${todoDue.length} tagihan</strong> perlu dibayar bulan ini • Total <strong>Rp ${rp(todoDueAmt)}</strong></div><button class="btn-sm" onclick="goPage('todo',document.querySelectorAll('.nav-tab')[3])">Lihat Todo →</button></div>`;}
   const ruleCols=Math.min(RULES.length,4);
   h+=`<div class="rule-grid-wrap" style="grid-template-columns:repeat(${ruleCols},1fr)">`;
   RULES.forEach(r=>{
     const colStyle=`color:${r.over?'var(--red)':r.color}`;
     const subKatHint=r.customKats&&r.customKats.length?`<div style="font-size:10px;color:var(--text3);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.customKats.join(', ')}">📌 ${r.customKats.slice(0,2).join(', ')}${r.customKats.length>2?' +'+( r.customKats.length-2)+'…':''}</div>`:'';
-    h+=`<div class="rule-card" style="border-bottom:3px solid ${r.color}" onclick="openRuleDetail('${r.key}')">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:2px">
-        <div class="rule-pct" style="color:${r.color}">${r.pct}%</div>
-        <span style="font-size:14px;opacity:.4">👁</span>
-      </div>
-      <div class="rule-lbl">${r.lbl}</div>
-      <div class="rule-target">Target: <strong>Rp ${rp(r.target)}</strong></div>
-      <div class="rule-actual" style="${colStyle}">Rp ${rp(r.actual)}</div>
-      <div class="rule-status" style="color:${r.over?'var(--red)':'var(--green)'}">
-        ${r.over?'⚠ Over Rp '+rp(r.actual-r.target):'✓ Sisa Rp '+rp(Math.max(0,r.sisa))}
-      </div>
-      ${subKatHint}
-      ${r.cascadeNote?`<div class="cascade-warn">${r.cascadeNote}</div>`:''}
-      <div class="rule-bbar"><div class="rule-bfill" style="width:${r.used}%;background:${r.over?'var(--red)':r.color}"></div></div>
-    </div>`;
+    h+=`<div class="rule-card" style="border-bottom:3px solid ${r.color}" onclick="openRuleDetail('${r.key}')"><div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:2px"><div class="rule-pct" style="color:${r.color}">${r.pct}%</div><span style="font-size:14px;opacity:.4">👁</span></div><div class="rule-lbl">${r.lbl}</div><div class="rule-target">Target: <strong>Rp ${rp(r.target)}</strong></div><div class="rule-actual" style="${colStyle}">Rp ${rp(r.actual)}</div><div class="rule-status" style="color:${r.over?'var(--red)':'var(--green)'}">${r.over?'⚠ Over Rp '+rp(r.actual-r.target):'✓ Sisa Rp '+rp(Math.max(0,r.sisa))}</div>${subKatHint}${r.cascadeNote?`<div class="cascade-warn">${r.cascadeNote}</div>`:''}<div class="rule-bbar"><div class="rule-bfill" style="width:${r.used}%;background:${r.over?'var(--red)':r.color}"></div></div></div>`;
   });
   h+='</div>';
   h+='<div class="card" style="margin-bottom:1rem"><div class="card-title">Pengeluaran per Pembayar</div><div class="payer-pie-grid">';
-  [{key:'jauhar',lbl:'👤 Jauhar',cl:PAYER_COLORS.jauhar},{key:'nita',lbl:'👤 Nita',cl:PAYER_COLORS.nita},{key:'bersama',lbl:'🤝 Bersama',cl:PAYER_COLORS.bersama}].forEach(p=>{
-    const pd=payerData[p.key];
-    h+=`<div class="payer-pie-card"><div style="font-size:13px;font-weight:600;margin-bottom:3px">${p.lbl}</div><div style="font-size:12px;color:var(--text3);margin-bottom:8px">Rp ${rp(pd.total)}</div>`;
-    if(pd.sorted.length){h+=`<div class="chart-wrap" style="height:130px"><canvas id="cPie_${p.key}"></canvas></div><div class="pie-legend" style="max-height:80px;overflow-y:auto">`;pd.sorted.slice(0,5).forEach((item,i)=>h+=`<div class="pie-row"><span><span class="pie-dot" style="background:${p.cl[i%p.cl.length]}"></span>${item[0]}</span><span>Rp ${rp(item[1])}</span></div>`);h+='</div>';}else{h+='<div style="text-align:center;padding:2rem 0;color:var(--text3);font-size:13px">Tidak ada</div>';}
-    h+='</div>';
-  });
+  [{key:'jauhar',lbl:'👤 Jauhar',cl:PAYER_COLORS.jauhar},{key:'nita',lbl:'👤 Nita',cl:PAYER_COLORS.nita},{key:'bersama',lbl:'🤝 Bersama',cl:PAYER_COLORS.bersama}].forEach(p=>{const pd=payerData[p.key];h+=`<div class="payer-pie-card"><div style="font-size:13px;font-weight:600;margin-bottom:3px">${p.lbl}</div><div style="font-size:12px;color:var(--text3);margin-bottom:8px">Rp ${rp(pd.total)}</div>`;if(pd.sorted.length){h+=`<div class="chart-wrap" style="height:130px"><canvas id="cPie_${p.key}"></canvas></div><div class="pie-legend" style="max-height:80px;overflow-y:auto">`;pd.sorted.slice(0,5).forEach((item,i)=>h+=`<div class="pie-row"><span><span class="pie-dot" style="background:${p.cl[i%p.cl.length]}"></span>${item[0]}</span><span>Rp ${rp(item[1])}</span></div>`);h+='</div>';}else{h+='<div style="text-align:center;padding:2rem 0;color:var(--text3);font-size:13px">Tidak ada</div>';}h+='</div>';});
   h+='</div></div>';
-  h+=`<div class="dash-grid">
-    <div class="card"><div class="card-title">Pengeluaran Harian</div><div class="chart-wrap" style="height:200px"><canvas id="cDaily"></canvas></div></div>
-    <div class="card"><div class="card-title">Analisis Bulan Ini</div><div class="${repCls}">${repTxt}</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px">
-        <div style="background:var(--green-l);border-radius:var(--r);padding:12px;text-align:center"><div style="font-size:11px;color:var(--green);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Masuk</div><div style="font-size:17px;font-weight:700;color:var(--green)">Rp ${rp(masuk)}</div></div>
-        <div style="background:var(--red-l);border-radius:var(--r);padding:12px;text-align:center"><div style="font-size:11px;color:var(--red);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Keluar</div><div style="font-size:17px;font-weight:700;color:var(--red)">Rp ${rp(keluar)}</div></div>
-      </div>
-    </div>
-  </div>`;
-  h+=`<div class="dash-grid">
-    <div class="card"><div class="card-title">Top Pengeluaran</div><div class="top-list">
-      ${topSub.length?topSub.map((item,i)=>`<div class="top-item"><span class="top-rank">${i+1}</span><span class="top-name">${item[0]}</span><span class="top-amt red">Rp ${rp(item[1])}</span></div>`).join(''):'<div style="color:var(--text3);padding:1rem;text-align:center">Belum ada data</div>'}
-    </div></div>
-    <div class="card"><div class="card-title">Alokasi Kategori</div>
-      <div class="chart-wrap" style="height:180px"><canvas id="cPie"></canvas></div>
-      <div class="pie-legend">${katArr.map((item,i)=>`<div class="pie-row"><span><span class="pie-dot" style="background:${PIE_COLORS[i%PIE_COLORS.length]}"></span>${item[0]}</span><span>Rp ${rp(item[1])}</span></div>`).join('')}</div>
-    </div>
-  </div>`;
-  h+=`<div class="dash-grid2">
-    <div class="card"><div class="card-title">Vs Bulan Lalu</div><div style="overflow-x:auto"><table class="cmp-table">
-      <thead><tr><th>Sub Kategori</th><th>Bln Ini</th><th>Bln Lalu</th><th>%</th></tr></thead>
-      <tbody>${cmpRows.length?cmpRows.map(r=>{const cls=r.pct===null?'':r.pct>0?'up':'down';const pt=r.pct===null?'—':(r.pct>0?'▲ ':'▼ ')+Math.abs(r.pct)+'%';return `<tr><td style="color:var(--text)">${r.n}</td><td>Rp ${rp(r.v)}</td><td style="color:var(--text3)">Rp ${rp(r.p)}</td><td class="${cls}">${pt}</td></tr>`;}).join(''):'<tr><td colspan="4" style="text-align:center;color:var(--text3);padding:1rem">Belum ada data</td></tr>'}</tbody>
-    </table></div></div>
-    <div class="card"><div class="card-title">Kategori Pemasukan</div>
-      <div class="chart-wrap" style="height:160px"><canvas id="cMasuk"></canvas></div>
-      <div class="top-list" style="margin-top:12px">${topMasuk.length?topMasuk.map((item,i)=>`<div class="top-item"><span class="top-rank">${i+1}</span><span class="top-name">${item[0]}</span><span class="top-amt green">Rp ${rp(item[1])}</span></div>`).join(''):'<div style="color:var(--text3);padding:.5rem;text-align:center">Belum ada data</div>'}</div>
-    </div>
-  </div>`;
+  h+=`<div class="dash-grid"><div class="card"><div class="card-title">Pengeluaran Harian</div><div class="chart-wrap" style="height:200px"><canvas id="cDaily"></canvas></div></div><div class="card"><div class="card-title">Analisis Bulan Ini</div><div class="${repCls}">${repTxt}</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px"><div style="background:var(--green-l);border-radius:var(--r);padding:12px;text-align:center"><div style="font-size:11px;color:var(--green);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Masuk</div><div style="font-size:17px;font-weight:700;color:var(--green)">Rp ${rp(masuk)}</div></div><div style="background:var(--red-l);border-radius:var(--r);padding:12px;text-align:center"><div style="font-size:11px;color:var(--red);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Keluar</div><div style="font-size:17px;font-weight:700;color:var(--red)">Rp ${rp(keluar)}</div></div></div></div></div>`;
+  h+=`<div class="dash-grid"><div class="card"><div class="card-title">Top Pengeluaran</div><div class="top-list">${topSub.length?topSub.map((item,i)=>`<div class="top-item"><span class="top-rank">${i+1}</span><span class="top-name">${item[0]}</span><span class="top-amt red">Rp ${rp(item[1])}</span></div>`).join(''):'<div style="color:var(--text3);padding:1rem;text-align:center">Belum ada data</div>'}</div></div><div class="card"><div class="card-title">Alokasi Kategori</div><div class="chart-wrap" style="height:180px"><canvas id="cPie"></canvas></div><div class="pie-legend">${katArr.map((item,i)=>`<div class="pie-row"><span><span class="pie-dot" style="background:${PIE_COLORS[i%PIE_COLORS.length]}"></span>${item[0]}</span><span>Rp ${rp(item[1])}</span></div>`).join('')}</div></div></div>`;
+  h+=`<div class="dash-grid2"><div class="card"><div class="card-title">Vs Bulan Lalu</div><div style="overflow-x:auto"><table class="cmp-table"><thead><tr><th>Sub Kategori</th><th>Bln Ini</th><th>Bln Lalu</th><th>%</th></tr></thead><tbody>${cmpRows.length?cmpRows.map(r=>{const cls=r.pct===null?'':r.pct>0?'up':'down';const pt=r.pct===null?'—':(r.pct>0?'▲ ':'▼ ')+Math.abs(r.pct)+'%';return `<tr><td style="color:var(--text)">${r.n}</td><td>Rp ${rp(r.v)}</td><td style="color:var(--text3)">Rp ${rp(r.p)}</td><td class="${cls}">${pt}</td></tr>`;}).join(''):'<tr><td colspan="4" style="text-align:center;color:var(--text3);padding:1rem">Belum ada data</td></tr>'}</tbody></table></div></div><div class="card"><div class="card-title">Kategori Pemasukan</div><div class="chart-wrap" style="height:160px"><canvas id="cMasuk"></canvas></div><div class="top-list" style="margin-top:12px">${topMasuk.length?topMasuk.map((item,i)=>`<div class="top-item"><span class="top-rank">${i+1}</span><span class="top-name">${item[0]}</span><span class="top-amt green">Rp ${rp(item[1])}</span></div>`).join(''):'<div style="color:var(--text3);padding:.5rem;text-align:center">Belum ada data</div>'}</div></div></div>`;
   el.innerHTML=h;
   setTimeout(()=>{
     buildAreaLine('cDaily',Array.from({length:days},(_,i)=>i+1),daily,'var(--red)','rgba(192,57,43,0.15)','rgba(192,57,43,0)');
@@ -1427,31 +1796,11 @@ async function renderEquity(){
   const last6=sortedMonths.slice(-6).map(m=>{const d=allData.filter(t=>{const td=new Date(t.tanggal);return td.getFullYear()+'-'+String(td.getMonth()+1).padStart(2,'0')===m;});const mi=d.filter(t=>t.tipe==='pemasukan').reduce((s,t)=>s+t.jumlah,0);const mk=d.filter(t=>t.tipe==='pengeluaran').reduce((s,t)=>s+t.jumlah,0);const[y,mo]=m.split('-');return{label:BULAN[parseInt(mo)]+' '+y,masuk:mi,keluar:mk,net:mi-mk};}).reverse();
   const RULES=_currentRules||getDefaultRules();
   document.getElementById('equityContent').innerHTML=`
-    <div class="equity-hero">
-      <div><div class="equity-hero-lbl">Total Net Equity (Semua Waktu)</div>
-        <div class="equity-hero-val" style="color:${netEquity>=0?'#4ade80':'#f87171'}">Rp ${rp(Math.abs(netEquity))}${netEquity<0?' (-)':''}</div>
-        <div style="font-size:12px;opacity:.5;margin-top:4px">Pemasukan − Pengeluaran kumulatif</div>
-      </div>
-      <div style="text-align:right"><div style="font-size:12px;opacity:.5;margin-bottom:4px;text-transform:uppercase;letter-spacing:.8px">Investasi & Tabungan</div>
-        <div style="font-family:var(--font-d);font-size:28px;color:#a78bfa">Rp ${rp(totalTab)}</div>
-        <div style="font-size:12px;opacity:.5;margin-top:2px">Total diinvestasikan</div>
-      </div>
-    </div>
-    <div class="equity-cards">
-      <div class="equity-card"><div class="ec-lbl">Total Pemasukan</div><div class="ec-val g">Rp ${rp(totalMasuk)}</div><div style="font-size:12px;color:var(--text3);margin-top:4px">Semua waktu · ${allData.filter(t=>t.tipe==='pemasukan').length} transaksi</div></div>
-      <div class="equity-card"><div class="ec-lbl">Total Pengeluaran</div><div class="ec-val r">Rp ${rp(totalKeluar)}</div><div style="font-size:12px;color:var(--text3);margin-top:4px">Semua waktu · ${allData.filter(t=>t.tipe==='pengeluaran').length} transaksi</div></div>
-      <div class="equity-card"><div class="ec-lbl">Total Ditabung</div><div class="ec-val p">Rp ${rp(totalTab)}</div><div style="font-size:12px;color:var(--text3);margin-top:4px">${totalMasuk>0?Math.round(totalTab/totalMasuk*100):0}% dari total pemasukan</div></div>
-    </div>
+    <div class="equity-hero"><div><div class="equity-hero-lbl">Total Net Equity (Semua Waktu)</div><div class="equity-hero-val" style="color:${netEquity>=0?'#4ade80':'#f87171'}">Rp ${rp(Math.abs(netEquity))}${netEquity<0?' (-)':''}</div><div style="font-size:12px;opacity:.5;margin-top:4px">Pemasukan − Pengeluaran kumulatif</div></div><div style="text-align:right"><div style="font-size:12px;opacity:.5;margin-bottom:4px;text-transform:uppercase;letter-spacing:.8px">Investasi & Tabungan</div><div style="font-family:var(--font-d);font-size:28px;color:#a78bfa">Rp ${rp(totalTab)}</div><div style="font-size:12px;opacity:.5;margin-top:2px">Total diinvestasikan</div></div></div>
+    <div class="equity-cards"><div class="equity-card"><div class="ec-lbl">Total Pemasukan</div><div class="ec-val g">Rp ${rp(totalMasuk)}</div><div style="font-size:12px;color:var(--text3);margin-top:4px">Semua waktu · ${allData.filter(t=>t.tipe==='pemasukan').length} transaksi</div></div><div class="equity-card"><div class="ec-lbl">Total Pengeluaran</div><div class="ec-val r">Rp ${rp(totalKeluar)}</div><div style="font-size:12px;color:var(--text3);margin-top:4px">Semua waktu · ${allData.filter(t=>t.tipe==='pengeluaran').length} transaksi</div></div><div class="equity-card"><div class="ec-lbl">Total Ditabung</div><div class="ec-val p">Rp ${rp(totalTab)}</div><div style="font-size:12px;color:var(--text3);margin-top:4px">${totalMasuk>0?Math.round(totalTab/totalMasuk*100):0}% dari total pemasukan</div></div></div>
     <div class="card" style="margin-bottom:1rem"><div class="card-title">Pertumbuhan Equity (Running Total)</div><div class="history-chart-wrap"><canvas id="cEquity"></canvas></div></div>
-    <div class="card" style="margin-bottom:1rem"><div class="card-title">Ringkasan 6 Bulan Terakhir</div><div style="overflow-x:auto"><table class="cmp-table">
-      <thead><tr><th>Bulan</th><th style="text-align:right">Pemasukan</th><th style="text-align:right">Pengeluaran</th><th style="text-align:right">Net</th><th style="text-align:right">Status</th></tr></thead>
-      <tbody>${last6.map(r=>`<tr><td style="color:var(--text);font-weight:500">${r.label}</td><td style="text-align:right;color:var(--green);font-weight:600">Rp ${rp(r.masuk)}</td><td style="text-align:right;color:var(--red);font-weight:600">Rp ${rp(r.keluar)}</td><td style="text-align:right;font-weight:700;color:${r.net>=0?'var(--green)':'var(--red)'}">${r.net>=0?'+':'-'} Rp ${rp(Math.abs(r.net))}</td><td style="text-align:right"><span style="padding:3px 9px;border-radius:99px;font-size:11px;font-weight:700;background:${r.net>=0?'var(--green-l)':'var(--red-l)'};color:${r.net>=0?'var(--green)':'var(--red)'}">${r.net>=0?'Surplus':'Defisit'}</span></td></tr>`).join('')||'<tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--text3)">Belum ada data</td></tr>'}</tbody>
-    </table></div></div>
-    <div class="card"><div class="card-title">Alokasi Rule Kumulatif</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
-        ${RULES.map(r=>{const actual=computeRuleActual(r,allData.filter(t=>t.tipe==='pengeluaran'));const idealTotal=totalMasuk*r.pct/100;const used=idealTotal>0?Math.min(Math.round(actual/idealTotal*100),100):0;const over=actual>idealTotal;return `<div style="display:flex;flex-direction:column;gap:7px"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-weight:600;color:var(--text);font-size:13px">${r.lbl} <span style="color:var(--text3);font-weight:400">(${r.pct}%)</span></span><span style="font-size:12px;color:${over?'var(--red)':'var(--text2)'}">Rp ${rp(actual)} / Rp ${rp(idealTotal)}</span></div><div class="rule-bbar" style="height:8px"><div class="rule-bfill" style="width:${used}%;background:${over?'var(--red)':r.color}"></div></div><div style="font-size:11px;color:${over?'var(--red)':'var(--text3)'}">${over?'⚠ Over '+Math.round(actual/idealTotal*100-100)+'%':used+'% dari target ideal'}</div></div>`;}).join('')}
-      </div>
-    </div>`;
+    <div class="card" style="margin-bottom:1rem"><div class="card-title">Ringkasan 6 Bulan Terakhir</div><div style="overflow-x:auto"><table class="cmp-table"><thead><tr><th>Bulan</th><th style="text-align:right">Pemasukan</th><th style="text-align:right">Pengeluaran</th><th style="text-align:right">Net</th><th style="text-align:right">Status</th></tr></thead><tbody>${last6.map(r=>`<tr><td style="color:var(--text);font-weight:500">${r.label}</td><td style="text-align:right;color:var(--green);font-weight:600">Rp ${rp(r.masuk)}</td><td style="text-align:right;color:var(--red);font-weight:600">Rp ${rp(r.keluar)}</td><td style="text-align:right;font-weight:700;color:${r.net>=0?'var(--green)':'var(--red)'}">${r.net>=0?'+':'-'} Rp ${rp(Math.abs(r.net))}</td><td style="text-align:right"><span style="padding:3px 9px;border-radius:99px;font-size:11px;font-weight:700;background:${r.net>=0?'var(--green-l)':'var(--red-l)'};color:${r.net>=0?'var(--green)':'var(--red)'}">${r.net>=0?'Surplus':'Defisit'}</span></td></tr>`).join('')||'<tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--text3)">Belum ada data</td></tr>'}</tbody></table></div></div>
+    <div class="card"><div class="card-title">Alokasi Rule Kumulatif</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">${RULES.map(r=>{const actual=computeRuleActual(r,allData.filter(t=>t.tipe==='pengeluaran'));const idealTotal=totalMasuk*r.pct/100;const used=idealTotal>0?Math.min(Math.round(actual/idealTotal*100),100):0;const over=actual>idealTotal;return `<div style="display:flex;flex-direction:column;gap:7px"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-weight:600;color:var(--text);font-size:13px">${r.lbl} <span style="color:var(--text3);font-weight:400">(${r.pct}%)</span></span><span style="font-size:12px;color:${over?'var(--red)':'var(--text2)'}">Rp ${rp(actual)} / Rp ${rp(idealTotal)}</span></div><div class="rule-bbar" style="height:8px"><div class="rule-bfill" style="width:${used}%;background:${over?'var(--red)':r.color}"></div></div><div style="font-size:11px;color:${over?'var(--red)':'var(--text3)'}">${over?'⚠ Over '+Math.round(actual/idealTotal*100-100)+'%':used+'% dari target ideal'}</div></div>`;}).join('')}</div></div>`;
   setTimeout(()=>buildEquityChart(monthLabels,runningVals),50);
 }
 
@@ -1470,32 +1819,13 @@ function fillFilterKat(){const all=[...new Set([...Object.keys(KAT.pengeluaran),
 function renderTrans(data){
   const el=document.getElementById('transList');
   if(!data||!data.length){el.innerHTML='<div class="loader" style="color:var(--text3)">Belum ada transaksi</div>';return;}
-  el.innerHTML=`<table class="t-table">
-    <thead><tr><th>Tanggal</th><th>Deskripsi</th><th>Tipe</th><th>Oleh</th><th>Kategori</th><th>Sub</th><th style="text-align:right">Jumlah</th><th>Aksi</th></tr></thead>
-    <tbody>${data.map(t=>`<tr>
-      <td style="white-space:nowrap">${fmtDate(t.tanggal)}</td>
-      <td style="color:var(--text);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.deskripsi||'-'}</td>
-      <td><span class="badge ${t.tipe}">${t.tipe}</span></td>
-      <td>${t.tipe==='pengeluaran'?`<span class="badge ${t.payer||'jauhar'}">${(t.payer||'jauhar').charAt(0).toUpperCase()+(t.payer||'jauhar').slice(1)}</span>`:'<span style="color:var(--text3)">—</span>'}</td>
-      <td>${t.kategori||'-'}</td>
-      <td>${t.sub_kategori||'-'}</td>
-      <td style="text-align:right" class="t-amount ${t.tipe==='pemasukan'?'pos':'neg'}">${t.tipe==='pemasukan'?'+':'-'} Rp ${rp(t.jumlah)}</td>
-      <td><div style="display:flex;gap:4px">
-        <button class="btn-sm" onclick='openEdit(${JSON.stringify(t).replace(/'/g,"&#39;")})'>Edit</button>
-        <button class="btn-sm btn-del" onclick="hapus('${t.id}')">Hapus</button>
-      </div></td>
-    </tr>`).join('')}</tbody>
-  </table>`;
+  el.innerHTML=`<table class="t-table"><thead><tr><th>Tanggal</th><th>Deskripsi</th><th>Tipe</th><th>Oleh</th><th>Kategori</th><th>Sub</th><th style="text-align:right">Jumlah</th><th>Aksi</th></tr></thead><tbody>${data.map(t=>`<tr><td style="white-space:nowrap">${fmtDate(t.tanggal)}</td><td style="color:var(--text);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.deskripsi||'-'}</td><td><span class="badge ${t.tipe}">${t.tipe}</span></td><td>${t.tipe==='pengeluaran'?`<span class="badge ${t.payer||'jauhar'}">${(t.payer||'jauhar').charAt(0).toUpperCase()+(t.payer||'jauhar').slice(1)}</span>`:'<span style="color:var(--text3)">—</span>'}</td><td>${t.kategori||'-'}</td><td>${t.sub_kategori||'-'}</td><td style="text-align:right" class="t-amount ${t.tipe==='pemasukan'?'pos':'neg'}">${t.tipe==='pemasukan'?'+':'-'} Rp ${rp(t.jumlah)}</td><td><div style="display:flex;gap:4px"><button class="btn-sm" onclick='openEdit(${JSON.stringify(t).replace(/'/g,"&#39;")})'>Edit</button><button class="btn-sm btn-del" onclick="hapus('${t.id}')">Hapus</button></div></td></tr>`).join('')}</tbody></table>`;
 }
 function filterTrans(){
   const q=document.getElementById('srch').value.toLowerCase();
   const tp=document.getElementById('ftTipe').value,py=document.getElementById('ftPayer').value;
   const kt=document.getElementById('ftKat').value,bl=document.getElementById('ftBln').value;
-  renderTrans(allData.filter(t=>{
-    if(q&&!t.deskripsi?.toLowerCase().includes(q)&&!t.kategori?.toLowerCase().includes(q)&&!t.sub_kategori?.toLowerCase().includes(q))return false;
-    if(tp&&t.tipe!==tp)return false;if(py&&(t.payer||'jauhar')!==py)return false;
-    if(kt&&t.kategori!==kt)return false;if(bl&&new Date(t.tanggal).getMonth()+1!==parseInt(bl))return false;return true;
-  }));
+  renderTrans(allData.filter(t=>{if(q&&!t.deskripsi?.toLowerCase().includes(q)&&!t.kategori?.toLowerCase().includes(q)&&!t.sub_kategori?.toLowerCase().includes(q))return false;if(tp&&t.tipe!==tp)return false;if(py&&(t.payer||'jauhar')!==py)return false;if(kt&&t.kategori!==kt)return false;if(bl&&new Date(t.tanggal).getMonth()+1!==parseInt(bl))return false;return true;}));
 }
 
 // ════ EDIT / DELETE ════
